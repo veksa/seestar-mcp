@@ -4,6 +4,8 @@ import { formatFields } from "../format.js";
 import { guard, textResult } from "../tools/result.js";
 import { findTools } from "./binaries.js";
 import { discoveryEnv, type ProcessingConfig } from "./config.js";
+import type { JobStore } from "./jobs.js";
+import { registerPipelineTools } from "./pipelineTools.js";
 import { registerSessionTools } from "./sessionTools.js";
 
 /**
@@ -13,8 +15,13 @@ import { registerSessionTools } from "./sessionTools.js";
  * stacking and export; GraXpert for gradients and noise; StarNet or Zenith for star removal.
  * Nothing is bundled, so the first question is always which of them are actually present.
  */
-export function registerProcessingTools(server: McpServer, config: ProcessingConfig): void {
+export function registerProcessingTools(
+	server: McpServer,
+	config: ProcessingConfig,
+	jobs: JobStore,
+): void {
 	registerSessionTools(server, config);
+	registerPipelineTools(server, config, jobs);
 
 	server.registerTool(
 		"astro_tools",

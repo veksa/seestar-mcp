@@ -5,6 +5,7 @@ import {
 	loadProcessingConfig,
 	PROCESSING_USAGE,
 } from "./processing/config.js";
+import { JobStore } from "./processing/jobs.js";
 import { createProcessingServer, PROCESSING_SERVER_VERSION } from "./processing/server.js";
 
 const argv = process.argv.slice(2);
@@ -29,7 +30,9 @@ try {
 	process.exit(2);
 }
 
-serveStdio(() => createProcessingServer(config));
+// One store for the process: the factory runs per connection, jobs outlive any single one.
+const jobs = new JobStore();
+serveStdio(() => createProcessingServer(config, jobs));
 
 console.error(
 	`astro-mcp ${PROCESSING_SERVER_VERSION} on stdio — sessions in ${config.workDir}\n` +
