@@ -2,13 +2,23 @@
 
 MCP server for ZWO Seestar telescopes (S50 / S50 Pro / S30) over [ASCOM Alpaca](https://ascom-standards.org/).
 
-Point your telescope at a target, start a stacking session, check the battery, or plan a whole night
-— from Claude Code, Claude Desktop, or any other MCP host.
+Point your telescope at a target, image it, then stack and process what it captured — from Claude
+Code, Claude Desktop, or any other MCP host.
+
+Two servers ship in this package:
+
+- **`seestar-mcp`** drives the telescope: find it, point it, image, download the frames.
+- **`astro-mcp`** processes the frames with [Siril](https://siril.org) and GraXpert: align, stack,
+  flatten the background, denoise, stretch, export.
 
 ```
-you → Claude → seestar-mcp → seestar_alp → Seestar
-        MCP        HTTP (Alpaca)   TCP
+you → Claude ─┬→ seestar-mcp → seestar_alp → Seestar
+              │       MCP        Alpaca/HTTP    TCP
+              └→ astro-mcp   → Siril, GraXpert → PNG
 ```
+
+They meet at a directory of files, not in code, so you can run either on its own. The processing
+side is documented in [`docs/processing.md`](docs/processing.md).
 
 [`seestar_alp`](https://github.com/smart-underworld/seestar_alp) is the driver that speaks the
 telescope's own protocol. It can run anywhere on your network; this server only needs HTTP access to
@@ -106,6 +116,16 @@ itself when you connect. Force it with `seestar` or `generic` if the guess is wr
 `schedule_get` · `schedule_create` · `schedule_add_item` · `schedule_remove_item` ·
 `schedule_control`
 
+**Files** — get what was captured onto this computer
+
+`imaging_albums` · `imaging_download`
+
+**Processing** (the `astro-mcp` server)
+
+`astro_tools` · `session_list` · `astro_inspect` · `process_session` · `astro_stack` ·
+`astro_background_extract` · `astro_denoise` · `astro_deconvolve` · `astro_color_calibrate` ·
+`astro_stretch` · `astro_remove_stars` · `astro_export` · `astro_run_script` · `astro_job`
+
 ### A session, roughly
 
 1. `seestar_startup` — unfold and calibrate; watch the `Initialise` event
@@ -118,6 +138,15 @@ itself when you connect. Force it with `seestar` or `generic` if the guess is wr
 
 Anything slow reports progress through `seestar_events` rather than blocking. `seestar_goto_target`
 and `seestar_startup` also take `wait: true` when you would rather have one answer than poll.
+
+Then, once the frames are on your computer (`imaging_download`), hand them to the other server:
+
+```
+process_session { session: "M31", preset: "standard", output: "m31.png" }
+```
+
+See [`docs/processing.md`](docs/processing.md) for the presets, the individual steps, and what has
+to be installed for each.
 
 ## Safety
 
@@ -141,8 +170,9 @@ work. The Seestar-specific ones do not — nothing but a Seestar implements them
 
 ```sh
 yarn install
-yarn test          # unit + integration against the built-in fake Alpaca server
+yarn test          # unit + integration against the built-in fakes
 yarn test:sim      # downloads the ASCOM simulators and tests against them
+yarn test:siril    # downloads Siril and runs the processing pipeline for real
 yarn typecheck
 yarn lint
 ```
