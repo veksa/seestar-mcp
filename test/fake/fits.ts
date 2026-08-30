@@ -89,3 +89,102 @@ function pad(text: string): string {
 	const remainder = text.length % BLOCK_SIZE;
 	return remainder === 0 ? text : text + " ".repeat(BLOCK_SIZE - remainder);
 }
+
+/**
+ * A frame with stars in it.
+ *
+ * Registration needs something to match on, so blank fixtures are no good for an end-to-end run
+ * against a real Siril. This paints Gaussian stars onto a noisy background and writes it as
+ * standard unsigned 16-bit FITS: big-endian samples with BZERO 32768, which is how the format
+ * expresses unsigned data.
+ */
+export interface StarfieldOptions {
+	width?: number;
+	height?: number;
+	/** Shift of the whole field, so consecutive frames need aligning. */
+	offsetX?: number;
+	offsetY?: number;
+	stars?: number;
+	seed?: number;
+	cards?: FitsCards;
+}
+
+export function buildStarfieldFits(options: StarfieldOptions = {}): Buffer {
+	const width = options.width ?? 256;
+	const height = options.height ?? 256;
+	const starCount = options.stars ?? 40;
+	const offsetX = options.offsetX ?? 0;
+	const offsetY = options.offsetY ?? 0;
+
+	const random = mulberry32(options.seed ?? 1);
+	const pixels = new Uint16Array(width * height);
+
+	// A dim, slightly noisy sky.
+	for (let index = 0; index < pixels.length; index++) {
+		pixels[index] = 800 + Math.floor(random() * 120);
+	}
+
+	// The same stars in every frame — only the frame's own offset moves them.
+	const starRandom = mulberry32(4242);
+	for (let star = 0; star < starCount; star++) {
+		const x = 12 + starRandom() * (width - 24) + offsetX;
+		const y = 12 + starRandom() * (height - 24) + offsetY;
+		const peak = 8000 + starRandom() * 40000;
+		const sigma = 1.4 + starRandom() * 0.6;
+
+		for (let dy = -5; dy <= 5; dy++) {
+			for (let dx = -5; dx <= 5; dx++) {
+				const px = Math.round(x) + dx;
+				const py = Math.round(y) + dy;
+				if (px < 0 || py < 0 || px >= width || py >= height) continue;
+
+				const falloff = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+				const index = py * width + px;
+				pixels[index] = Math.min(65535, (pixels[index] ?? 0) + Math.round(peak * falloff));
+			}
+		}
+	}
+
+	const cards = [
+		card("SIMPLE", true),
+		card("BITPIX", 16),
+		card("NAXIS", 2),
+		card("NAXIS1", width),
+		card("NAXIS2", height),
+		// Unsigned 16-bit is signed samples plus this offset — the standard trick.
+		card("BZERO", 32768),
+		card("BSCALE", 1),
+		...Object.entries(options.cards ?? {}).map(([keyword, value]) => card(keyword, value)),
+		"END".padEnd(CARD_LENGTH, " "),
+	].join("");
+
+	const header = Buffer.from(pad(cards), "latin1");
+	const data = Buffer.alloc(Math.ceil((width * height * 2) / BLOCK_SIZE) * BLOCK_SIZE);
+	for (let index = 0; index < pixels.length; index++) {
+		// FITS is big-endian, and the samples are stored signed.
+		data.writeInt16BE((pixels[index] ?? 0) - 32768, index * 2);
+	}
+
+	return Buffer.concat([header, data]);
+}
+
+export async function writeStarfieldFits(
+	path: string,
+	options: StarfieldOptions = {},
+): Promise<string> {
+	await mkdir(dirname(path), { recursive: true });
+	await writeFile(path, buildStarfieldFits(options));
+	return path;
+}
+
+/** A small deterministic generator, so fixtures are identical on every machine. */
+function mulberry32(seed: number): () => number {
+	let state = seed;
+	return () => {
+		state |= 0;
+		state = (state + 0x6d2b79f5) | 0;
+		let value = Math.imul(state ^ (state >>> 15), 1 | state);
+		value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+		return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+	};
+}

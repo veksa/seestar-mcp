@@ -40,7 +40,8 @@
 		"prepublishOnly": "yarn build",
 		"sim:fetch": "node scripts/fetch-omnisim.mjs",
 		"test:sim": "node scripts/fetch-omnisim.mjs && vitest run --config vitest.sim.config.ts",
-		"siril:fetch": "node scripts/fetch-siril.mjs"
+		"siril:fetch": "node scripts/fetch-siril.mjs",
+		"test:siril": "node scripts/fetch-siril.mjs && vitest run --config vitest.siril.config.ts"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/server": "^2.0.0",

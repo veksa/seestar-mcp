@@ -9,6 +9,7 @@
 		"test/**/*.ts",
 		"scripts/**/*.mjs",
 		"vitest.config.ts",
-		"vitest.sim.config.ts"
+		"vitest.sim.config.ts",
+		"vitest.siril.config.ts"
 	]
 }

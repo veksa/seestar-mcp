@@ -2,6 +2,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { createMcpHandler, type McpServer } from "@modelcontextprotocol/server";
 import { loadConfig, type ServerConfig } from "../src/config.js";
 import type { ProcessingConfig } from "../src/processing/config.js";
+import { JobStore } from "../src/processing/jobs.js";
 import { createProcessingServer } from "../src/processing/server.js";
 import { createServer } from "../src/server.js";
 
@@ -33,8 +34,11 @@ async function connectToFactory(factory: () => McpServer): Promise<Client> {
 }
 
 /** The same, for the processing server — a separate process in real use, a separate factory here. */
-export async function connectProcessingClient(config: ProcessingConfig): Promise<Client> {
-	return connectToFactory(() => createProcessingServer(config));
+export async function connectProcessingClient(
+	config: ProcessingConfig,
+	jobs = new JobStore(),
+): Promise<Client> {
+	return connectToFactory(() => createProcessingServer(config, jobs));
 }
 
 /** The text a tool returned, joined — what a person would read in the transcript. */
