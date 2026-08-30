@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Client } from "@modelcontextprotocol/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadProcessingConfig } from "../../src/processing/config.js";
+import { readFrameInfo } from "../../src/processing/fits.js";
 import { seestarLightCards, writeStarfieldFits } from "../fake/fits.js";
 import { connectProcessingClient, isError, structuredOf, textOf } from "../mcp-client.js";
 
@@ -56,7 +57,24 @@ beforeAll(async () => {
 				offsetX: index % 3,
 				offsetY: (index % 2) * 2,
 				seed: index,
-				cards: seestarLightCards(),
+				// Synthetic frames are grey, not a mosaic; the CFA path is covered on its own below.
+				cards: seestarLightCards({ BAYERPAT: undefined }),
+			},
+		);
+	}
+
+	// The same field again, but labelled the way a Seestar labels a sub-frame: one plane carrying a
+	// Bayer mosaic. Stacking these has to produce three channels, not one.
+	for (let index = 1; index <= 8; index++) {
+		await writeStarfieldFits(
+			join(workDir, "M16", "raw", `light_${String(index).padStart(3, "0")}.fit`),
+			{
+				width: 320,
+				height: 320,
+				offsetX: index % 3,
+				offsetY: (index % 2) * 2,
+				seed: index,
+				cards: seestarLightCards({ OBJECT: "M 16" }),
 			},
 		);
 	}
@@ -106,6 +124,23 @@ describe.skipIf(!sirilPath)("astro_stack", () => {
 		expect(isError(result)).toBe(true);
 		expect(textOf(result)).toMatch(/unknown command|Error in line/i);
 	}, 120_000);
+});
+
+describe.skipIf(!sirilPath)("one-shot-colour frames", () => {
+	it("demosaics them, so the stack comes out in colour rather than as a grey mosaic", async () => {
+		const result = await client.callTool({
+			name: "astro_stack",
+			arguments: { session: "M16", wait: true, timeout_s: 300 },
+		});
+
+		expect(isError(result)).toBe(false);
+
+		// Nobody asked for it: the BAYERPAT card in the frames is what turned it on.
+		expect(textOf(result)).toContain("-debayer");
+
+		const output = (structuredOf(result).result as { output?: string })?.output;
+		expect((await readFrameInfo(output as string)).channels).toBe(3);
+	}, 300_000);
 });
 
 describe.skipIf(!sirilPath)("astro_export", () => {

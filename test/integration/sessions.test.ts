@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Client } from "@modelcontextprotocol/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { loadProcessingConfig } from "../../src/processing/config.js";
+import { detectBayerPattern } from "../../src/processing/sessions.js";
 import { seestarLightCards, writeFits } from "../fake/fits.js";
 import { connectProcessingClient, isError, structuredOf, textOf } from "../mcp-client.js";
 
@@ -37,6 +38,11 @@ beforeAll(async () => {
 		cards: seestarLightCards({ EXPTIME: 30, OBJECT: "M 42" }),
 	});
 
+	// A session of frames that are already colour, so nothing needs demosaicing.
+	await writeFits(join(workDir, "colour", "raw", "a.fit"), {
+		cards: seestarLightCards({ NAXIS3: 3, BAYERPAT: undefined, OBJECT: "M 13" }),
+	});
+
 	// A session with only the stacked JPEG the telescope produced.
 	await mkdir(join(workDir, "jpeg-only", "raw"), { recursive: true });
 	await writeFile(join(workDir, "jpeg-only", "raw", "stacked.jpg"), "not really a jpeg");
@@ -64,7 +70,12 @@ describe("session_list", () => {
 		const result = await connected.callTool({ name: "session_list", arguments: {} });
 
 		const sessions = structuredOf(result).sessions as Array<{ name: string; fits_files: number }>;
-		expect(sessions.map((entry) => entry.name).sort()).toEqual(["M31", "jpeg-only", "mixed"]);
+		expect(sessions.map((entry) => entry.name).sort()).toEqual([
+			"M31",
+			"colour",
+			"jpeg-only",
+			"mixed",
+		]);
 		expect(sessions.find((entry) => entry.name === "M31")?.fits_files).toBe(10);
 		expect(textOf(result)).toContain("10 FITS");
 	});
@@ -103,6 +114,30 @@ describe("astro_inspect", () => {
 		expect(textOf(result)).toContain("1080x1920");
 		// The fixtures warm the sensor by a tenth of a degree per frame.
 		expect(textOf(result)).toContain("10.1°C to 11°C");
+	});
+
+	it("says the frames are a colour mosaic, because that decides how they stack", async () => {
+		const connected = await connect();
+
+		const result = await connected.callTool({
+			name: "astro_inspect",
+			arguments: { session: "M31" },
+		});
+
+		expect(structuredOf(result)).toMatchObject({ bayer_pattern: "GRBG" });
+		expect(textOf(result)).toContain("one-shot colour, Bayer GRBG");
+	});
+
+	it("says nothing about a mosaic when the frames are already colour", async () => {
+		const connected = await connect();
+
+		const result = await connected.callTool({
+			name: "astro_inspect",
+			arguments: { session: "colour" },
+		});
+
+		expect(structuredOf(result).bayer_pattern).toBeUndefined();
+		expect(textOf(result)).not.toContain("Bayer");
 	});
 
 	it("warns when the exposure changed mid-session", async () => {
@@ -191,5 +226,17 @@ describe("astro_inspect on already-stacked masters", () => {
 		// "Unknown" is not a target name; the coordinates are what identifies the field.
 		expect(textOf(result)).toContain("RA 06h 09m 13.4s");
 		expect(textOf(result)).toContain("Dec +15° 47′ 42″");
+	});
+});
+
+describe("detectBayerPattern", () => {
+	it("reads the pattern off the frames, so no caller has to be told about it", async () => {
+		expect(await detectBayerPattern(join(workDir, "M31", "raw"))).toBe("GRBG");
+	});
+
+	it("returns nothing for frames that carry no mosaic, or for no frames at all", async () => {
+		expect(await detectBayerPattern(join(workDir, "colour", "raw"))).toBeUndefined();
+		expect(await detectBayerPattern(join(workDir, "jpeg-only", "raw"))).toBeUndefined();
+		expect(await detectBayerPattern(join(workDir, "does-not-exist"))).toBeUndefined();
 	});
 });

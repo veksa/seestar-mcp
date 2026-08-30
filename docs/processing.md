@@ -96,6 +96,11 @@ rectangle. Every export stretches by default; turn it off only if you stretched 
 **Star removal is last.** It works on stretched data, and gives you a starless image plus a star
 layer to recombine.
 
+**Sub-frames are demosaiced for you.** A Seestar sub-frame is raw one-shot-colour data — a single
+plane carrying a Bayer mosaic, which `astro_inspect` reports as `one-shot colour, Bayer GRBG`.
+Stacking it as it stands would give a grey image with the mosaic baked in, so the tools read the
+BAYERPAT card and demosaic. Override with `debayer: true` or `debayer: false` if the header lies.
+
 **Mixed exposures stack badly.** `astro_inspect` says when a session contains more than one exposure
 length, which usually means it should be split and stacked separately.
 

@@ -8,6 +8,7 @@ import { sessionPaths } from "../workdir.js";
 import { findTool, isFound } from "./binaries.js";
 import { discoveryEnv, type ProcessingConfig } from "./config.js";
 import { describeJob, type Job, type JobStore } from "./jobs.js";
+import { detectBayerPattern } from "./sessions.js";
 import {
 	buildExportScript,
 	buildStackScript,
@@ -95,6 +96,13 @@ export function registerPipelineTools(
 					.describe("Master dark. Seestar subtracts its own, so usually none."),
 				flat: z.string().optional(),
 				bias: z.string().optional(),
+				debayer: z
+					.boolean()
+					.optional()
+					.describe(
+						"Demosaic one-shot-colour frames. Left unset it follows the frames' BAYERPAT " +
+							"card, which every Seestar sub-frame carries.",
+					),
 				wait: z.boolean().optional().describe("Block until it finishes. Default false."),
 				timeout_s: z.number().min(10).max(7200).optional().describe("Wait timeout, default 600s"),
 			}),
@@ -110,10 +118,16 @@ export function registerPipelineTools(
 				const output = input.output ?? "stacked";
 				await mkdir(directories.output, { recursive: true });
 
+				// Undemosaiced frames stack into a grey mosaic, so the default has to be right rather
+				// than convenient: ask the frames themselves unless the caller has an opinion.
+				const debayer =
+					input.debayer ?? (await detectBayerPattern(directories.input)) !== undefined;
+
 				const script = buildStackScript({
 					inputDir: directories.input,
 					outputDir: directories.output,
 					output,
+					debayer,
 					...(input.register !== undefined ? { register: input.register } : {}),
 					...(input.rejection ? { rejection: input.rejection as RejectionType } : {}),
 					...(input.sigma_low !== undefined ? { sigmaLow: input.sigma_low } : {}),

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { parseValue, readFitsHeader, readFrameInfo } from "../../src/processing/fits.js";
+import { isCfa, parseValue, readFitsHeader, readFrameInfo } from "../../src/processing/fits.js";
 import { seestarLightCards, writeFits } from "../fake/fits.js";
 
 let workDir: string;
@@ -112,6 +112,28 @@ describe("readFrameInfo", () => {
 		});
 		expect(info.dateObs).toBe("2026-08-30T21:14:07.123");
 		expect(info.sizeBytes).toBeGreaterThan(0);
+	});
+
+	it("reads the Bayer pattern, which decides whether the frames need demosaicing", async () => {
+		const path = await writeFits(join(workDir, "cfa.fit"), { cards: seestarLightCards() });
+
+		const info = await readFrameInfo(path);
+
+		expect(info.bayerPattern).toBe("GRBG");
+		expect(isCfa(info)).toBe(true);
+	});
+
+	it("does not call an already-demosaiced frame a mosaic", async () => {
+		const colour = await writeFits(join(workDir, "colour.fit"), {
+			cards: seestarLightCards({ NAXIS3: 3 }),
+		});
+		const mono = await writeFits(join(workDir, "mono.fit"), {
+			cards: seestarLightCards({ BAYERPAT: undefined }),
+		});
+
+		// Three planes: something has demosaiced it already, whatever the header still says.
+		expect(isCfa(await readFrameInfo(colour))).toBe(false);
+		expect(isCfa(await readFrameInfo(mono))).toBe(false);
 	});
 
 	it("accepts the alternative keywords other capture software writes", async () => {

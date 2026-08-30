@@ -12,7 +12,8 @@ import { dirname } from "node:path";
 const CARD_LENGTH = 80;
 const BLOCK_SIZE = 2880;
 
-export type FitsCards = Record<string, string | number | boolean>;
+/** A card whose value is undefined is left out, which is how a fixture drops one of the defaults. */
+export type FitsCards = Record<string, string | number | boolean | undefined>;
 
 export interface FitsFixtureOptions {
 	width?: number;
@@ -37,7 +38,7 @@ export function buildFits(options: FitsFixtureOptions = {}): Buffer {
 		card("NAXIS", 2),
 		card("NAXIS1", width),
 		card("NAXIS2", height),
-		...Object.entries(options.cards ?? {}).map(([keyword, value]) => card(keyword, value)),
+		...extraCards(options.cards),
 		"END".padEnd(CARD_LENGTH, " "),
 	].join("");
 
@@ -54,7 +55,7 @@ export async function writeFits(path: string, options: FitsFixtureOptions = {}):
 	return path;
 }
 
-/** What a Seestar writes into a light frame, as far as we know it. */
+/** What a Seestar writes into a light frame, read off a real S50 sub-frame. */
 export function seestarLightCards(overrides: FitsCards = {}): FitsCards {
 	return {
 		OBJECT: "M 31",
@@ -68,8 +69,18 @@ export function seestarLightCards(overrides: FitsCards = {}): FitsCards {
 		XBINNING: 1,
 		FOCALLEN: 250,
 		IMAGETYP: "LIGHT",
+		// The sensor is one-shot colour and the telescope saves what it read, so a sub-frame is a
+		// Bayer mosaic in one plane. Pass BAYERPAT: undefined for an already-demosaiced frame.
+		BAYERPAT: "GRBG",
 		...overrides,
 	};
+}
+
+/** The fixture's own cards. A value of undefined drops the card, rather than writing one. */
+function extraCards(cards: FitsCards | undefined): string[] {
+	return Object.entries(cards ?? {})
+		.filter(([, value]) => value !== undefined)
+		.map(([keyword, value]) => card(keyword, value as string | number | boolean));
 }
 
 function card(keyword: string, value: string | number | boolean): string {
@@ -154,7 +165,7 @@ export function buildStarfieldFits(options: StarfieldOptions = {}): Buffer {
 		// Unsigned 16-bit is signed samples plus this offset — the standard trick.
 		card("BZERO", 32768),
 		card("BSCALE", 1),
-		...Object.entries(options.cards ?? {}).map(([keyword, value]) => card(keyword, value)),
+		...extraCards(options.cards),
 		"END".padEnd(CARD_LENGTH, " "),
 	].join("");
 

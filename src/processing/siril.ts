@@ -50,7 +50,13 @@ export interface StackScriptOptions {
 	bias?: string;
 	/** Name of the stacked result, without extension. */
 	output: string;
-	/** Seestar frames are colour already; set for undebayered CFA data. */
+	/**
+	 * Demosaic the frames.
+	 *
+	 * Seestar sub-frames are raw one-shot-colour: one plane carrying a Bayer mosaic. Stacked
+	 * without this they give a grey image with the mosaic in it, and registration hunts for stars
+	 * in a checkerboard. The tools detect it from BAYERPAT rather than making the caller know.
+	 */
 	debayer?: boolean;
 }
 
@@ -63,25 +69,32 @@ export interface StackScriptOptions {
  */
 export function buildStackScript(options: StackScriptOptions): string[] {
 	const sequence = options.sequenceName ?? "light";
+
+	const masters = [
+		options.bias ? `-bias=${quote(options.bias)}` : "",
+		options.dark ? `-dark=${quote(options.dark)}` : "",
+		options.flat ? `-flat=${quote(options.flat)}` : "",
+	].filter(Boolean);
+
+	// Demosaicing has to come after the masters are subtracted, because a master is itself a
+	// mosaic: subtracting one from interpolated pixels smears the calibration across neighbours.
+	// With masters it therefore belongs to `calibrate`; without them there is nothing to wait for
+	// and `convert` does it in the pass it is already making.
+	const debayerDuringConvert = options.debayer === true && masters.length === 0;
+
 	const script = [
 		"requires 1.4.0",
 		"setext fit",
 		`cd ${quote(options.inputDir)}`,
 		// -out= puts the sequence next to the results rather than among the originals.
-		`convert ${sequence} -out=${quote(options.outputDir)}`,
+		`convert ${sequence} -out=${quote(options.outputDir)}${debayerDuringConvert ? " -debayer" : ""}`,
 		`cd ${quote(options.outputDir)}`,
 	];
 
 	let current = sequence;
 
-	const calibration = [
-		options.bias ? `-bias=${quote(options.bias)}` : "",
-		options.dark ? `-dark=${quote(options.dark)}` : "",
-		options.flat ? `-flat=${quote(options.flat)}` : "",
-		options.debayer ? "-debayer" : "",
-	].filter(Boolean);
-
-	if (calibration.length > 0) {
+	if (masters.length > 0) {
+		const calibration = [...masters, ...(options.debayer ? ["-debayer"] : [])];
 		script.push(`calibrate ${current} ${calibration.join(" ")}`);
 		current = `pp_${current}`;
 	}

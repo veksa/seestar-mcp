@@ -9,7 +9,7 @@ import {
 import { errorResult, guard, textResult } from "../tools/result.js";
 import { sessionPaths } from "../workdir.js";
 import type { ProcessingConfig } from "./config.js";
-import type { FrameInfo } from "./fits.js";
+import { type FrameInfo, isCfa } from "./fits.js";
 import { distinct, inspectDirectory, listSessions } from "./sessions.js";
 
 /** Tools that look at what is on disk: which sessions exist, and what is in them. */
@@ -105,6 +105,7 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 				object: z.string().optional(),
 				exposure_seconds: z.array(z.number()).optional(),
 				gains: z.array(z.number()).optional(),
+				bayer_pattern: z.string().optional(),
 				filters: z.array(z.string()).optional(),
 				integration_seconds: z.number().optional(),
 			}),
@@ -146,6 +147,9 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 				const exposures = distinct(summary.frames, (frame) => frame.exposureSeconds);
 				const gains = distinct(summary.frames, (frame) => frame.gain);
 				const filters = distinct(summary.frames, (frame) => frame.filter);
+				const bayer = distinct(summary.frames, (frame) =>
+					isCfa(frame) ? frame.bayerPattern : undefined,
+				);
 				const integration = totalIntegration(summary.frames);
 
 				const text = [
@@ -175,6 +179,12 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 						["size", `${(summary.totalBytes / 1e6).toFixed(1)} MB`],
 						["temperature", temperatureRange(summary.frames)],
 						["dimensions", dimensions(summary.frames)],
+						[
+							"sensor",
+							bayer.length > 0
+								? `one-shot colour, Bayer ${bayer.join(", ")} — demosaiced while stacking`
+								: undefined,
+						],
 					]),
 					exposures.length > 1
 						? "\nThe exposure changed during this session — Siril stacks mixed exposures badly, so consider splitting them."
@@ -199,6 +209,7 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 					...(allMasters ? { masters: true } : {}),
 					...(exposures.length > 0 ? { exposure_seconds: exposures } : {}),
 					...(gains.length > 0 ? { gains } : {}),
+					...(bayer[0] !== undefined ? { bayer_pattern: bayer[0] } : {}),
 					...(filters.length > 0 ? { filters } : {}),
 					...(integration > 0 && !allMasters ? { integration_seconds: integration } : {}),
 				});

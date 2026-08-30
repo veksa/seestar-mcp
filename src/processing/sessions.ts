@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { type FrameInfo, readFrameInfo } from "./fits.js";
+import { type FrameInfo, isCfa, readFrameInfo } from "./fits.js";
 
 /**
  * Reading what is on disk.
@@ -133,6 +133,25 @@ export async function inspectDirectory(
 		imageFiles: files.filter((file) => file.kind === "image").length,
 		totalBytes: files.reduce((total, file) => total + file.sizeBytes, 0),
 	};
+}
+
+/**
+ * The Bayer pattern the frames in a directory carry, or undefined when they carry none.
+ *
+ * Only the first frame that can be read decides — a session is one camera shooting one way, and
+ * opening several hundred headers to learn the same thing over and over would be waste. A few
+ * attempts, in case the first file is truncated.
+ */
+export async function detectBayerPattern(directory: string): Promise<string | undefined> {
+	const files = await listFiles(directory);
+
+	for (const file of files.filter((entry) => entry.kind === "fits").slice(0, 5)) {
+		const frame = await readFrameInfo(file.path).catch(() => undefined);
+		if (!frame) continue;
+		return isCfa(frame) ? frame.bayerPattern : undefined;
+	}
+
+	return undefined;
 }
 
 /** The distinct values of one field across a set of frames, most common first. */

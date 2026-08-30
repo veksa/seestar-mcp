@@ -52,6 +52,12 @@ export interface FrameInfo {
 	 * sub, not the total — summing it across masters gives a number that is wrong by hours.
 	 */
 	isMaster?: boolean;
+	/**
+	 * Bayer pattern of a frame that still carries its mosaic, e.g. "GRBG".
+	 *
+	 * Present on every Seestar sub-frame: the telescope saves what the sensor read, undemosaiced.
+	 */
+	bayerPattern?: string;
 	/** Where the frame points, when the header says. Useful when OBJECT is "Unknown". */
 	rightAscensionDeg?: number;
 	declinationDeg?: number;
@@ -158,9 +164,21 @@ export async function readFrameInfo(path: string): Promise<FrameInfo> {
 		...defined("stackedFrames", number("STACKCNT", "NCOMBINE", "STACKED")),
 		...defined("imageType", text("IMAGETYP", "FRAME")),
 		...defined("isMaster", isMasterFrame(text("IMAGETYP", "FRAME"))),
+		...defined("bayerPattern", text("BAYERPAT")),
 		...defined("rightAscensionDeg", number("RA", "CRVAL1")),
 		...defined("declinationDeg", number("DEC", "CRVAL2")),
 	};
+}
+
+/**
+ * True for a frame that still holds its Bayer mosaic, and so has to be demosaiced before stacking.
+ *
+ * One plane plus a BAYERPAT card is raw one-shot-colour data: stacked as it stands it gives a grey
+ * image with the mosaic baked into it. Three planes means something has already demosaiced it — a
+ * master the telescope stacked itself, for instance — and then there is nothing to do.
+ */
+export function isCfa(frame: FrameInfo): boolean {
+	return frame.bayerPattern !== undefined && (frame.channels ?? 1) === 1;
 }
 
 /** Stacking software writes "Master Light", "Master Dark" and the like into IMAGETYP. */

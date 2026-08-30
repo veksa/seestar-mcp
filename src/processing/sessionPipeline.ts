@@ -7,6 +7,7 @@ import { sessionPaths } from "../workdir.js";
 import { findTool, isFound } from "./binaries.js";
 import { discoveryEnv, type ProcessingConfig } from "./config.js";
 import { describeJob, type JobStore } from "./jobs.js";
+import { detectBayerPattern } from "./sessions.js";
 import { buildSessionScript, PRESETS, type PresetName, runSirilScript } from "./siril.js";
 
 /**
@@ -58,6 +59,13 @@ export function registerSessionPipeline(
 				color_calibrate: z.boolean().optional(),
 				stretch: z.enum(["none", "auto", "asinh", "ghs"]).optional(),
 				remove_stars: z.boolean().optional().describe("Needs StarNet installed"),
+				debayer: z
+					.boolean()
+					.optional()
+					.describe(
+						"Demosaic one-shot-colour frames. Left unset it follows the frames' BAYERPAT " +
+							"card, which every Seestar sub-frame carries.",
+					),
 				wait: z.boolean().optional().describe("Block until it finishes. Default false."),
 				timeout_s: z.number().min(30).max(21600).optional().describe("Wait timeout, default 1800s"),
 			}),
@@ -89,6 +97,10 @@ export function registerSessionPipeline(
 				const exportName = input.output ? stripExtension(input.output) : "result";
 				const exportFormat = input.output ? formatOf(input.output) : "png";
 
+				// Undemosaiced frames stack into a grey mosaic, so the default has to be right rather
+				// than convenient: ask the frames themselves unless the caller has an opinion.
+				const debayer = input.debayer ?? (await detectBayerPattern(paths.raw)) !== undefined;
+
 				await mkdir(paths.process, { recursive: true });
 
 				// Explicit arguments win over the preset; the preset wins over the plain defaults.
@@ -97,6 +109,8 @@ export function registerSessionPipeline(
 					outputDir: paths.process,
 					output: "stacked",
 					...preset,
+					// Resolved above, from the caller or from the frames; no preset has a view on it.
+					debayer,
 					...(input.reject_worst_percent !== undefined
 						? { bestPercent: 100 - input.reject_worst_percent }
 						: {}),

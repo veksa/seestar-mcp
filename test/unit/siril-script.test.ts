@@ -106,6 +106,43 @@ describe("buildStackScript", () => {
 		expect(script.at(-1)).toContain("stack r_pp_light ");
 	});
 
+	it("demosaics during the conversion when there is nothing to calibrate", () => {
+		const script = buildStackScript({
+			inputDir: "/data/M16/raw",
+			outputDir: "/data/M16/process",
+			output: "stacked",
+			debayer: true,
+		});
+
+		expect(script).toContain("convert light -out=/data/M16/process -debayer");
+		expect(script).toContain("register light");
+		expect(script.some((line) => line.startsWith("calibrate "))).toBe(false);
+	});
+
+	it("demosaics after the masters instead, so calibration happens on the mosaic", () => {
+		const script = buildStackScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "out",
+			dark: "/masters/dark.fit",
+			debayer: true,
+		});
+
+		expect(script).toContain("convert light -out=/b");
+		expect(script).toContain("calibrate light -dark=/masters/dark.fit -debayer");
+	});
+
+	it("leaves the frames alone when they are already colour", () => {
+		const script = buildStackScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "out",
+			debayer: false,
+		});
+
+		expect(script.join(" ")).not.toContain("-debayer");
+	});
+
 	it("turns off normalization with the flag rather than an empty value", () => {
 		const script = buildStackScript({
 			inputDir: "/a",
