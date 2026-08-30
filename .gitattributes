@@ -1,0 +1,6 @@
+# Everything in here is stored and checked out with LF, on every platform.
+#
+# Git on Windows converts to CRLF on checkout by default, which the formatter then reports as a
+# difference on every line of every file — green locally, red on the Windows runner. Pinning the
+# line ending is what keeps one checkout the same as another.
+* text=auto eol=lf
