@@ -243,7 +243,12 @@ export async function runSirilScript(
 	log.write(`$ ${sirilPath} -d ${options.workDir} -s -\n${renderScript(script)}\n`);
 
 	const tail: string[] = [];
-	let errorLine: string | undefined;
+	// Three different things, deliberately kept apart. Only the first is certainly fatal: Siril
+	// abandons the script at that point. A bare "error:" is printed by commands that then carry on
+	// regardless — `denoise` and `rmgreen` both do it — so on its own it proves nothing.
+	let fatalLine: string | undefined;
+	let complaintLine: string | undefined;
+	let finishedSuccessfully = false;
 	let pending = "";
 
 	const child = spawn(call.command, call.args, {
@@ -262,7 +267,9 @@ export async function runSirilScript(
 			// Siril prefixes everything with "log: "; strip it so the tail reads like prose.
 			const clean = line.replace(/^log:\s?/, "").replace(/<[^>]*>/g, "");
 			if (clean.trim() === "") continue;
-			if (/^Error in line \d+/i.test(clean) || /^Error:/i.test(clean)) errorLine ??= clean;
+			if (/^Error in line \d+/i.test(clean)) fatalLine ??= clean;
+			else if (/^Error:/i.test(clean)) complaintLine ??= clean;
+			if (/^Script execution finished successfully/i.test(clean)) finishedSuccessfully = true;
 
 			tail.push(clean);
 			if (tail.length > TAIL_LINES) tail.shift();
@@ -293,8 +300,17 @@ export async function runSirilScript(
 	if (pending) consume(Buffer.from("\n"));
 	await new Promise<void>((resolve) => log.end(resolve));
 
+	// Siril's own closing verdict outranks any single line: a script that ran to the end and saved
+	// its output has not failed, whatever a recoverable command grumbled along the way. Without
+	// that verdict — a crash, a kill — a complaint is the best evidence there is.
+	const success =
+		exitCode === 0 &&
+		fatalLine === undefined &&
+		(finishedSuccessfully || complaintLine === undefined);
+	const errorLine = fatalLine ?? (success ? undefined : complaintLine);
+
 	return {
-		success: exitCode === 0 && errorLine === undefined,
+		success,
 		exitCode,
 		tail: [...tail],
 		...(errorLine ? { error: errorLine } : {}),
