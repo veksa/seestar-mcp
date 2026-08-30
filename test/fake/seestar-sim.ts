@@ -346,9 +346,18 @@ export class SeestarSim {
 				const { ra, dec } = this.resolveCoordinates(parameters);
 				if (ra >= 0) this.startSlew(ra, dec, "AutoGoto", String(parameters.target_name ?? ""));
 				this.startStack(parameters);
-				this.schedule = { list: [{ action: name, params: parameters }], state: "running" };
-				this.setEvent("Scheduler", { state: "running", is_stacking: true });
-				return this.jsonResult(name, 0, { state: "running" });
+				this.schedule = {
+					list: [
+						{
+							schedule_item_id: `item-${++this.scheduleItemId}`,
+							action: name,
+							params: parameters,
+						},
+					],
+					state: "working",
+				};
+				this.setEvent("Scheduler", { state: "working", is_stacking: true });
+				return this.jsonResult(name, 0, { state: "working" });
 			}
 			case "adjust_focus": {
 				const steps = Number(parameters.steps ?? 0);
@@ -370,23 +379,34 @@ export class SeestarSim {
 			case "stop_plate_solve_loop":
 				return { ok: true, error: "" };
 			case "create_schedule":
+				// The driver refuses to replace a schedule that is still running.
+				if (this.schedule.state === "working") return "scheduler is still active";
 				this.schedule = { list: [], state: "stopped" };
 				return this.jsonResult(name, 0, this.schedule);
 			case "get_schedule":
-				return this.jsonResult(name, 0, { ...this.schedule, is_stacking: this.isStacking });
+				return this.jsonResult(name, 0, {
+					...this.schedule,
+					is_stacking: this.isStacking,
+					...(this.schedule.state === "working" && this.schedule.list[0]
+						? { current_item_id: this.schedule.list[0].schedule_item_id }
+						: {}),
+				});
 			case "add_schedule_item": {
-				const item = { id: `item-${++this.scheduleItemId}`, ...parameters };
+				const item = {
+					schedule_item_id: `item-${++this.scheduleItemId}`,
+					...parameters,
+				};
 				this.schedule.list.push(item);
-				return item;
+				return this.jsonResult(name, 0, this.schedule);
 			}
 			case "remove_schedule_item": {
-				const id = String(parameters.schedule_item_id ?? parameters.id ?? "");
-				this.schedule.list = this.schedule.list.filter((item) => item.id !== id);
-				return this.schedule;
+				const id = String(parameters.schedule_item_id ?? "");
+				this.schedule.list = this.schedule.list.filter((item) => item.schedule_item_id !== id);
+				return this.jsonResult(name, 0, this.schedule);
 			}
 			case "start_scheduler":
-				this.schedule.state = "running";
-				this.setEvent("Scheduler", { state: "running" });
+				this.schedule.state = "working";
+				this.setEvent("Scheduler", { state: "working" });
 				return this.jsonResult(name, 0, this.schedule);
 			case "stop_scheduler":
 				this.schedule.state = "stopped";
@@ -395,13 +415,13 @@ export class SeestarSim {
 				return this.jsonResult(name, 0, this.schedule);
 			case "pause_scheduler":
 				this.schedule.state = "paused";
-				return this.schedule;
+				return this.jsonResult(name, 0, this.schedule);
 			case "continue_scheduler":
-				this.schedule.state = "running";
-				return this.schedule;
+				this.schedule.state = "working";
+				return this.jsonResult(name, 0, this.schedule);
 			case "skip_scheduler_cur_item":
 				this.schedule.list.shift();
-				return this.schedule;
+				return this.jsonResult(name, 0, this.schedule);
 			case "export_schedule":
 				return this.schedule.list;
 			case "import_schedule":

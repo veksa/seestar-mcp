@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { SeestarSim } from "../fake/seestar-sim.js";
 import { type Harness, isError, startHarness, structuredOf, textOf } from "./harness.js";
 
 let harness: Harness;
@@ -96,6 +97,33 @@ describe("seestar_goto_target", () => {
 
 		const after = await harness.client.callTool({ name: "seestar_events", arguments: {} });
 		expect(textOf(after)).toMatch(/AutoGoto\s+complete/);
+	});
+
+	it("can wait for the goto and report how it ended", async () => {
+		harness = await startHarness();
+		await connect();
+
+		const result = await harness.client.callTool({
+			name: "seestar_goto_target",
+			arguments: { target_name: "M42", ra: 5.588, dec: -5.39, wait: true, timeout_s: 5 },
+		});
+
+		expect(structuredOf(result)).toMatchObject({ completed: true });
+		expect(textOf(result)).toContain("AutoGoto complete");
+		expect(harness.fake.sim.slewing).toBe(false);
+	});
+
+	it("says the goto is still running when the wait times out", async () => {
+		harness = await startHarness({}, { sim: new SeestarSim({ slewDurationMs: 60_000 }) });
+		await connect();
+
+		const result = await harness.client.callTool({
+			name: "seestar_goto_target",
+			arguments: { target_name: "M42", ra: 5.588, dec: -5.39, wait: true, timeout_s: 5 },
+		});
+
+		expect(structuredOf(result)).toMatchObject({ completed: false });
+		expect(textOf(result)).toContain("still running");
 	});
 });
 
