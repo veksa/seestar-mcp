@@ -15,11 +15,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - run: corepack enable
+      # After setup-node, not before: it installs its own Node, and on the Windows runner the
+      # global Yarn 1 that ships with the image wins the PATH until corepack is enabled against
+      # that Node. `cache: yarn` goes with it, since it would run before corepack is ready.
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: yarn
+      - run: corepack enable
       - run: yarn install --immutable
       - run: yarn lint
       - run: yarn typecheck
@@ -31,11 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: yarn
+      - run: corepack enable
       - run: yarn install --immutable
       - uses: actions/cache@v4
         with:
@@ -49,11 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: yarn
+      - run: corepack enable
       - run: yarn install --immutable
       - uses: actions/cache@v4
         with:
