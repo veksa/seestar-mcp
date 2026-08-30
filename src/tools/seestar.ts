@@ -199,7 +199,10 @@ export function registerSeestarTools(server: McpServer, session: Session): void 
 					.min(-90)
 					.max(90)
 					.optional()
-					.describe("Observing site latitude. Omit to use the telescope's configured location."),
+					.describe(
+						"Observing site latitude. Omitting it sends 0, which the driver reads as " +
+							"'work the location out from the IP address' — pass real coordinates for accurate gotos.",
+					),
 				longitude: z.number().min(-180).max(180).optional(),
 			}),
 		},

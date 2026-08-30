@@ -84,7 +84,7 @@ export function registerGenericTools(server: McpServer, session: Session): void 
 					}
 					// Alpaca takes form fields, so every value goes on the wire as a scalar.
 					for (const [key, value] of Object.entries(decoded as Record<string, unknown>)) {
-						if (typeof value === "object" && value !== null) {
+						if (value === null || typeof value === "object") {
 							return errorResult(`params.${key} must be a string, number or boolean`);
 						}
 						parsed[key] = value as string | number | boolean;
