@@ -1,4 +1,4 @@
-import type { SeestarActions } from "./actions.js";
+import { type SeestarActions, SeestarError } from "./actions.js";
 
 /**
  * The Seestar scheduler.
@@ -40,44 +40,56 @@ export interface ScheduleState {
 export class SeestarSchedule {
 	constructor(private readonly actions: SeestarActions) {}
 
-	async get(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("get_schedule", {}));
+	/**
+	 * Every scheduler action answers with the schedule itself — except when the driver declines, and
+	 * then it answers with a bare sentence such as "scheduler is still active". Parsing that as a
+	 * schedule would report an empty list in state "unknown", so it becomes an error instead.
+	 */
+	private async run(
+		action: string,
+		parameters: Record<string, unknown> = {},
+	): Promise<ScheduleState> {
+		const raw = await this.actions.call<unknown>(action, parameters);
+		if (typeof raw === "string") throw new SeestarError(action, raw);
+		return parseSchedule(raw);
+	}
+
+	get(): Promise<ScheduleState> {
+		return this.run("get_schedule");
 	}
 
 	/** Start a new, empty schedule. Refused while one is running. */
-	async create(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("create_schedule", {}));
+	create(): Promise<ScheduleState> {
+		return this.run("create_schedule");
 	}
 
-	async addItem(action: ScheduleAction, params: Record<string, unknown>): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("add_schedule_item", { action, params }));
+	addItem(action: ScheduleAction, params: Record<string, unknown>): Promise<ScheduleState> {
+		return this.run("add_schedule_item", { action, params });
 	}
 
-	async removeItem(itemId: string): Promise<ScheduleState> {
-		return parseSchedule(
-			await this.actions.call("remove_schedule_item", { schedule_item_id: itemId }),
-		);
+	removeItem(itemId: string): Promise<ScheduleState> {
+		return this.run("remove_schedule_item", { schedule_item_id: itemId });
 	}
 
-	async start(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("start_scheduler", {}));
+	start(): Promise<ScheduleState> {
+		return this.run("start_scheduler");
 	}
 
-	async stop(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("stop_scheduler", {}));
+	stop(): Promise<ScheduleState> {
+		return this.run("stop_scheduler");
 	}
 
-	async pause(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("pause_scheduler", {}));
+	pause(): Promise<ScheduleState> {
+		return this.run("pause_scheduler");
 	}
 
-	async resume(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("continue_scheduler", {}));
+	resume(): Promise<ScheduleState> {
+		return this.run("continue_scheduler");
 	}
 
 	/** Abandon the item running now and move to the next one. */
-	async skip(): Promise<ScheduleState> {
-		return parseSchedule(await this.actions.call("skip_scheduler_cur_item", {}));
+	skip(): Promise<ScheduleState> {
+		return this.run("skip_scheduler_cur_item");
 	}
 }
 

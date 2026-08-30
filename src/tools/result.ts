@@ -46,7 +46,7 @@ export function explain(error: unknown): string {
 
 	if (error instanceof SeestarError) {
 		// The driver refuses a new session while one is running, and says so in prose.
-		const hint = /scheduler is active/i.test(error.message)
+		const hint = /scheduler is (still )?active/i.test(error.message)
 			? "\n\nA session is already running. Stop it with imaging_stop, then try again."
 			: "";
 		return `${error.message}${hint}`;
