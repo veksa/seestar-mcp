@@ -316,7 +316,9 @@ function readProperty(
 		case "connected":
 			return deviceNumber === 0 || (connected.get(deviceNumber) ?? false);
 		case "name":
-			return identity.name ?? (deviceNumber === 0 ? "Seestar Federation" : `Seestar ${deviceNumber}`);
+			return (
+				identity.name ?? (deviceNumber === 0 ? "Seestar Federation" : `Seestar ${deviceNumber}`)
+			);
 		case "description":
 			return identity.description;
 		case "driverinfo":

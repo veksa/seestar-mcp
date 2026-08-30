@@ -134,6 +134,19 @@ describe("schedule", () => {
 		expect(textOf(result)).toContain("▶");
 	});
 
+	it("reports the driver's refusal instead of showing an empty schedule", async () => {
+		harness = await startHarness();
+		await connect();
+		await addItem({ action: "start_mosaic", target_name: "M31", session_minutes: 30 });
+		await harness.client.callTool({ name: "schedule_control", arguments: { operation: "start" } });
+
+		const result = await harness.client.callTool({ name: "schedule_create", arguments: {} });
+
+		expect(isError(result)).toBe(true);
+		expect(textOf(result)).toContain("scheduler is still active");
+		expect(textOf(result)).not.toContain("The schedule is empty");
+	});
+
 	it("is hidden in read-only mode except for reading it", async () => {
 		harness = await startHarness({ readOnly: true });
 

@@ -206,6 +206,32 @@ describe("imaging", () => {
 		expect(harness.fake.sim.isStacking).toBe(false);
 	});
 
+	it("waits for the plate solve to finish before reporting a result", async () => {
+		harness = await startHarness();
+		await connect();
+
+		const result = await harness.client.callTool({
+			name: "imaging_solve",
+			arguments: { timeout_s: 5 },
+		});
+
+		expect(isError(result)).toBe(false);
+		// Reading the result straight after start_solve would return the previous solve.
+		expect(textOf(result)).not.toContain("Still solving");
+		expect(textOf(result)).toContain("Plate solve result");
+	});
+
+	it("says there is no image yet instead of handing over a dead link", async () => {
+		harness = await startHarness();
+		await connect();
+
+		const result = await harness.client.callTool({ name: "imaging_last_image", arguments: {} });
+
+		expect(isError(result)).toBe(false);
+		expect(textOf(result)).toContain("No image saved yet");
+		expect(structuredOf(result).url).toBeUndefined();
+	});
+
 	it("returns the last image URL with the frame count", async () => {
 		harness = await startHarness();
 		await connect();
