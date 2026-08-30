@@ -2,6 +2,14 @@
 	"name": "seestar-mcp",
 	"version": "0.1.0",
 	"description": "MCP server for ZWO Seestar telescopes over ASCOM Alpaca",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/veksa/seestar-mcp.git"
+	},
+	"bugs": {
+		"url": "https://github.com/veksa/seestar-mcp/issues"
+	},
+	"homepage": "https://github.com/veksa/seestar-mcp#readme",
 	"keywords": [
 		"mcp",
 		"model-context-protocol",
@@ -18,7 +26,8 @@
 		"astro-mcp": "dist/astro.js",
 		"seestar-mcp": "dist/index.js"
 	},
-	"main": "./dist/index.js",
+	"types": "./dist/server.d.ts",
+	"main": "./dist/server.js",
 	"files": [
 		"dist",
 		"/README.md",

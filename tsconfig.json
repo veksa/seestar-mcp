@@ -17,7 +17,6 @@
 		"rootDir": "src",
 		"outDir": "dist",
 		"declaration": true,
-		"sourceMap": true,
 		"removeComments": false,
 
 		"skipLibCheck": true,
