@@ -4,6 +4,7 @@ import {
 	AlpacaTransportError,
 	AscomErrorCode,
 } from "../alpaca/errors.js";
+import { SeestarError } from "../seestar/actions.js";
 import { SessionError } from "../session.js";
 
 export interface ToolResult {
@@ -42,6 +43,14 @@ export async function guard(run: () => Promise<ToolResult>): Promise<ToolResult>
 /** Turn an error into something worth reading, with the next step where there is one. */
 export function explain(error: unknown): string {
 	if (error instanceof SessionError) return error.message;
+
+	if (error instanceof SeestarError) {
+		// The driver refuses a new session while one is running, and says so in prose.
+		const hint = /scheduler is active/i.test(error.message)
+			? "\n\nA session is already running. Stop it with imaging_stop, then try again."
+			: "";
+		return `${error.message}${hint}`;
+	}
 
 	if (error instanceof AlpacaDeviceError) {
 		const hint = deviceErrorHint(error);

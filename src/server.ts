@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/server";
 import type { ServerConfig } from "./config.js";
 import { Session } from "./session.js";
 import { registerDiscoveryTools } from "./tools/discovery.js";
+import { registerImagingTools } from "./tools/imaging.js";
+import { registerSeestarTools } from "./tools/seestar.js";
 import { registerTelescopeTools } from "./tools/telescope.js";
 
 export const SERVER_NAME = "seestar-mcp";
@@ -24,6 +26,13 @@ export function createServer(config: ServerConfig): CreatedServer {
 
 	registerDiscoveryTools(server, session);
 	registerTelescopeTools(server, session);
+
+	// The Seestar tools stay registered in `auto`: whether the device is a Seestar is only known
+	// once something connects, and by then the tool list has been sent.
+	if (config.profile !== "generic") {
+		registerSeestarTools(server, session);
+		registerImagingTools(server, session);
+	}
 
 	return { server, session };
 }
