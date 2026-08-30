@@ -2,6 +2,8 @@ import { AlpacaClient, type DeviceType } from "./alpaca/client.js";
 import { AlpacaDevice } from "./alpaca/device.js";
 import { Telescope } from "./alpaca/devices/telescope.js";
 import type { ServerConfig } from "./config.js";
+import { SeestarActions } from "./seestar/actions.js";
+import { SeestarDevice } from "./seestar/device.js";
 
 /** Raised when a tool needs a device and there is none — always with a way out in the message. */
 export class SessionError extends Error {}
@@ -93,6 +95,11 @@ export class Session {
 			);
 		}
 		return new Telescope(this.client(target.host, target.port), target.deviceNumber);
+	}
+
+	/** The selected device driven through the Seestar action layer. */
+	seestar(): SeestarDevice {
+		return new SeestarDevice(new SeestarActions(this.device()));
 	}
 
 	/** Point the session at a device and set its `Connected` property. */
