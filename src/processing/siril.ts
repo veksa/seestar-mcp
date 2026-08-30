@@ -270,3 +270,162 @@ export async function runSirilScript(
 		durationMs: Date.now() - started,
 	};
 }
+
+export interface OperationScriptOptions {
+	/** Directory the image lives in; also where the result is written. */
+	directory: string;
+	/** File to load, without extension for FITS. */
+	input: string;
+	/** Where to save the result, without extension. Omit to leave the image loaded only. */
+	output?: string;
+	/** The commands that do the actual work, between load and save. */
+	commands: string[];
+}
+
+/**
+ * load → work → save, the shape every single-image step takes.
+ *
+ * Siril's processing commands all act on "the currently loaded image", so each step is the same
+ * three-part script with different middle. Keeping that in one place means a new step is a list of
+ * command strings and nothing else.
+ */
+export function buildOperationScript(options: OperationScriptOptions): string[] {
+	const script = [
+		"requires 1.4.0",
+		"setext fit",
+		`cd ${quote(options.directory)}`,
+		`load ${quote(options.input)}`,
+		...options.commands,
+	];
+
+	if (options.output) script.push(`save ${quote(options.output)}`);
+	return script;
+}
+
+/** Background extraction with Siril's own model. Verified against `help subsky`. */
+export function backgroundCommands(options: {
+	degree?: number;
+	samples?: number;
+	tolerance?: number;
+	smooth?: number;
+	dither?: boolean;
+}): string[] {
+	// -rbf is the radial basis function model; a degree instead selects the polynomial one.
+	const parts = ["subsky", options.degree === undefined ? "-rbf" : String(options.degree)];
+
+	if (options.dither) parts.push("-dither");
+	if (options.samples !== undefined) parts.push(`-samples=${options.samples}`);
+	if (options.tolerance !== undefined) parts.push(`-tolerance=${options.tolerance}`);
+	if (options.smooth !== undefined) parts.push(`-smooth=${options.smooth}`);
+
+	return [parts.join(" ")];
+}
+
+/** Siril's non-local Bayes denoise. Verified against `help denoise`. */
+export function denoiseCommands(options: { modulation?: number; noCosmetic?: boolean }): string[] {
+	const parts = ["denoise"];
+	if (options.noCosmetic) parts.push("-nocosmetic");
+	if (options.modulation !== undefined) parts.push(`-mod=${options.modulation}`);
+	return [parts.join(" ")];
+}
+
+/**
+ * GraXpert, run as the Python script that ships with Siril.
+ *
+ * Inference happens inside Siril rather than in the GraXpert CLI; the GraXpert program itself is
+ * only needed for downloading models, and its path is set in Siril's preferences. The script has to
+ * be installed first through Siril's script repository.
+ */
+export function graxpertCommands(
+	operation: "background" | "denoise" | "deconvolve-object" | "deconvolve-stars",
+	options: { model?: string; extraArgs?: string[] } = {},
+): string[] {
+	const flags: Record<typeof operation, string> = {
+		background: "-bge",
+		denoise: "-denoise",
+		"deconvolve-object": "-deconv_obj",
+		"deconvolve-stars": "-deconv_stellar",
+	};
+
+	const parts = ["pyscript", "GraXpert-AI.py", flags[operation]];
+	if (options.model) parts.push(`-model='${options.model}'`);
+	parts.push(...(options.extraArgs ?? []));
+
+	return [parts.join(" ")];
+}
+
+/** Richardson-Lucy deconvolution, with a PSF measured from the stars. Verified against `help rl`. */
+export function deconvolveCommands(options: {
+	psf?: "stars" | "blind";
+	iterations?: number;
+	alpha?: number;
+}): string[] {
+	const rl = ["rl"];
+	if (options.iterations !== undefined) rl.push(`-iters=${options.iterations}`);
+	if (options.alpha !== undefined) rl.push(`-alpha=${options.alpha}`);
+
+	return [`makepsf ${options.psf ?? "stars"}`, rl.join(" ")];
+}
+
+/**
+ * Colour calibration.
+ *
+ * Both variants need a plate-solved image, so solving comes first unless the caller says the image
+ * already carries a solution.
+ */
+export function colorCalibrationCommands(options: {
+	method?: "pcc" | "spcc";
+	platesolve?: boolean;
+	limitMagnitude?: number;
+	catalog?: string;
+}): string[] {
+	const commands: string[] = [];
+	if (options.platesolve !== false) commands.push("platesolve");
+
+	const parts: string[] = [options.method ?? "pcc"];
+	if (options.limitMagnitude !== undefined) parts.push(`-limitmag=${options.limitMagnitude}`);
+	if (options.catalog) parts.push(`-catalog=${options.catalog}`);
+
+	commands.push(parts.join(" "));
+	return commands;
+}
+
+/** The three stretches Siril offers, each verified against its own help text. */
+export function stretchCommands(options: {
+	method?: "auto" | "asinh" | "ghs";
+	amount?: number;
+	shadowsClip?: number;
+	linked?: boolean;
+}): string[] {
+	const method = options.method ?? "auto";
+
+	if (method === "asinh") {
+		// The stretch factor is mandatory; 100 is a reasonable middle for deep-sky data.
+		return [`asinh ${options.amount ?? 100}`];
+	}
+
+	if (method === "ghs") {
+		const parts = ["autoghs"];
+		if (options.linked) parts.push("-linked");
+		parts.push(String(options.shadowsClip ?? 0), String(options.amount ?? 10));
+		return [parts.join(" ")];
+	}
+
+	const parts = ["autostretch"];
+	if (options.linked) parts.push("-linked");
+	if (options.shadowsClip !== undefined) parts.push(String(options.shadowsClip));
+	return [parts.join(" ")];
+}
+
+/** Star removal through StarNet, which Siril calls out to. Verified against `help starnet`. */
+export function starRemovalCommands(options: {
+	starMask?: boolean;
+	stretch?: boolean;
+	stride?: number;
+}): string[] {
+	const parts = ["starnet"];
+	if (options.stretch) parts.push("-stretch");
+	if (options.stride !== undefined) parts.push(`-stride=${options.stride}`);
+	if (options.starMask === false) parts.push("-nostarmask");
+	return [parts.join(" ")];
+}

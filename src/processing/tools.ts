@@ -7,6 +7,7 @@ import { discoveryEnv, type ProcessingConfig } from "./config.js";
 import type { JobStore } from "./jobs.js";
 import { registerPipelineTools } from "./pipelineTools.js";
 import { registerSessionTools } from "./sessionTools.js";
+import { registerStepTools } from "./stepTools.js";
 
 /**
  * Processing tools.
@@ -22,6 +23,7 @@ export function registerProcessingTools(
 ): void {
 	registerSessionTools(server, config);
 	registerPipelineTools(server, config, jobs);
+	registerStepTools(server, config, jobs);
 
 	server.registerTool(
 		"astro_tools",
