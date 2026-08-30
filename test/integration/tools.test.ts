@@ -92,13 +92,13 @@ describe("device_connect", () => {
 		expect(structuredOf(result)).toMatchObject({ connected: false });
 	});
 
-	it("reports a generic device as not a Seestar", async () => {
-		harness = await startHarness({}, { serverName: "ASCOM Alpaca Simulators" });
+	it("does not claim a generic Alpaca device is a Seestar", async () => {
+		harness = await startHarness({ profile: "generic" }, { serverName: "ASCOM Alpaca Simulators" });
 
 		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
 
-		// The fake still names its driver "Seestar ALP", so force the profile to check the wiring.
-		expect(structuredOf(result)).toHaveProperty("is_seestar");
+		expect(structuredOf(result)).toMatchObject({ is_seestar: false });
+		expect(textOf(result)).toContain("generic Alpaca device");
 	});
 });
 

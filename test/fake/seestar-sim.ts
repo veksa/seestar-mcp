@@ -188,6 +188,25 @@ export class SeestarSim {
 		return this.stack !== undefined;
 	}
 
+	/** The driver's own reply envelope: `{jsonrpc, TimeStamp, command, code, result}`. */
+	private jsonResult(command: string, code: number, result: unknown): Record<string, unknown> {
+		return { jsonrpc: "2.0", TimeStamp: this.now() / 1000, command, code, result };
+	}
+
+	/** Events keyed by name, plus the synthetic Scheduler and Mount entries the driver adds. */
+	private eventMap(): Record<string, unknown> {
+		const map: Record<string, unknown> = {};
+		for (const [name, event] of this.events) map[name] = event;
+		map.scheduler = {
+			Event: "Scheduler",
+			state: this.schedule.state,
+			is_stacking: this.stack !== undefined,
+			is_stacking_paused: false,
+		};
+		map.mount = { Event: "Mount", equ_mode: false };
+		return map;
+	}
+
 	private setEvent(name: string, fields: Omit<FirmwareEvent, "Event">): void {
 		this.events.set(name, { Event: name, ...fields });
 	}
@@ -278,7 +297,8 @@ export class SeestarSim {
 				this.methodSync(parameters);
 				return "async request sent.";
 			case "get_event_state":
-				return { result: { List: [...this.events.values()] } };
+				// The driver returns a map keyed by event name, each value carrying its own Event field.
+				return this.jsonResult("get_event_state", 0, this.eventMap());
 			case "action_start_up_sequence": {
 				if (typeof parameters.lat === "number" && parameters.lat !== 0) {
 					this.siteLatitude = parameters.lat;
@@ -315,10 +335,20 @@ export class SeestarSim {
 			case "start_mosaic":
 			case "start_framed_mosaic":
 			case "start_spectra": {
+				// These build a one-item schedule, so they refuse while another one is running.
+				if (this.schedule.state !== "stopped" && this.schedule.state !== "complete") {
+					return this.jsonResult(
+						name,
+						-1,
+						"An existing scheduler is active. Returned with no action.",
+					);
+				}
 				const { ra, dec } = this.resolveCoordinates(parameters);
 				if (ra >= 0) this.startSlew(ra, dec, "AutoGoto", String(parameters.target_name ?? ""));
 				this.startStack(parameters);
-				return `${name} started`;
+				this.schedule = { list: [{ action: name, params: parameters }], state: "running" };
+				this.setEvent("Scheduler", { state: "running", is_stacking: true });
+				return this.jsonResult(name, 0, { state: "running" });
 			}
 			case "adjust_focus": {
 				const steps = Number(parameters.steps ?? 0);
@@ -341,9 +371,9 @@ export class SeestarSim {
 				return { ok: true, error: "" };
 			case "create_schedule":
 				this.schedule = { list: [], state: "stopped" };
-				return this.schedule;
+				return this.jsonResult(name, 0, this.schedule);
 			case "get_schedule":
-				return { ...this.schedule, is_stacking: this.isStacking };
+				return this.jsonResult(name, 0, { ...this.schedule, is_stacking: this.isStacking });
 			case "add_schedule_item": {
 				const item = { id: `item-${++this.scheduleItemId}`, ...parameters };
 				this.schedule.list.push(item);
@@ -357,12 +387,12 @@ export class SeestarSim {
 			case "start_scheduler":
 				this.schedule.state = "running";
 				this.setEvent("Scheduler", { state: "running" });
-				return this.schedule;
+				return this.jsonResult(name, 0, this.schedule);
 			case "stop_scheduler":
 				this.schedule.state = "stopped";
 				this.stack = undefined;
 				this.setEvent("Scheduler", { state: "stopped" });
-				return this.schedule;
+				return this.jsonResult(name, 0, this.schedule);
 			case "pause_scheduler":
 				this.schedule.state = "paused";
 				return this.schedule;
@@ -387,8 +417,17 @@ export class SeestarSim {
 	/** The raw firmware JSON-RPC passthrough (`method_sync` / `method_async`). */
 	private methodSync(parameters: Record<string, unknown>): unknown {
 		const method = String(parameters.method ?? "");
-		const params = parameters.params;
+		// The firmware replies in its own envelope and the driver passes it through untouched.
+		return {
+			jsonrpc: "2.0",
+			TimeStamp: this.now() / 1000,
+			method,
+			code: 0,
+			...(this.firmwareCall(method, parameters.params) as Record<string, unknown>),
+		};
+	}
 
+	private firmwareCall(method: string, params: unknown): unknown {
 		switch (method) {
 			case "get_device_state":
 				return {
