@@ -167,6 +167,23 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 			}
 		}
 
+		// The telescope's own file store, served over plain HTTP the way the real one serves MyWorks.
+		if (url.pathname.startsWith("/MyWorks/")) {
+			const name = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+			if (!/\.(jpg|jpeg|fit|fits)$/i.test(name)) {
+				respondText(response, 404, "not an image");
+				return;
+			}
+			// Deterministic contents, and a different length per file so tests can tell them apart.
+			const body = Buffer.from(`FAKE-IMAGE:${url.pathname}`.padEnd(256 + name.length, "."));
+			response.writeHead(200, {
+				"Content-Type": name.toLowerCase().endsWith(".jpg") ? "image/jpeg" : "application/fits",
+				"Content-Length": String(body.length),
+			});
+			response.end(body);
+			return;
+		}
+
 		if (url.pathname.startsWith("/management")) {
 			handleManagement(url.pathname, send, response, serverName, deviceNumbers);
 			return;
@@ -231,6 +248,8 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 	const { port } = server.address() as AddressInfo;
+	// The telescope serves its files from its own address; point the simulated one at this server.
+	sim.imageBaseUrl = `http://127.0.0.1:${port}`;
 
 	let discoverySocket: Socket | undefined;
 	let discoveryPort: number | undefined;

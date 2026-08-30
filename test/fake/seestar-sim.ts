@@ -101,6 +101,15 @@ export class SeestarSim {
 	private solveEndsAt = 0;
 	private lastImageIndex = 0;
 
+	/**
+	 * Where the telescope serves its files. The real one answers on its own address, which is not
+	 * necessarily the machine running the driver — the fake server points this at itself so downloads
+	 * can be tested end to end.
+	 */
+	imageBaseUrl = "http://seestar.local";
+	/** Albums the telescope has on disk. */
+	albums = ["M31", "M42"];
+
 	// Scheduler
 	private schedule: { list: Array<Record<string, unknown>>; state: string } = {
 		list: [],
@@ -603,15 +612,15 @@ export class SeestarSim {
 				this.park();
 				return { result: true };
 			case "get_albums":
+				// Paths are relative to `path`, and the driver derives the full-size name from the
+				// thumbnail's. Sub-frame variants are marked by a suffix on the name, not the file.
 				return {
 					result: {
 						path: "MyWorks",
-						list: [
-							{
-								name: "Album",
-								files: [{ name: "M31", thn: "M31_thn.jpg" }],
-							},
-						],
+						list: this.albums.map((album) => ({
+							name: album,
+							files: this.albumFiles(album),
+						})),
 					},
 				};
 			default:
@@ -658,14 +667,23 @@ export class SeestarSim {
 	 */
 	private lastImage(): { url: string; name: string | null } {
 		if (this.lastImageIndex === 0) {
-			return { url: "http://seestar.local/MyWorks/.jpg", name: null };
+			return { url: `${this.imageBaseUrl}/MyWorks/.jpg`, name: null };
 		}
 
-		const name = this.stack?.targetName ?? "M31";
+		const name = this.stack?.targetName ?? this.albums[0] ?? "M31";
 		return {
-			url: `http://seestar.local/MyWorks/${name}/Light_${name}_${this.lastImageIndex}.jpg`,
+			url: `${this.imageBaseUrl}/MyWorks/${name}/Light_${name}_${this.lastImageIndex}.jpg`,
 			name,
 		};
+	}
+
+	/** The files one album holds: a stacked result, its sub-frame variant, and a couple of subs. */
+	albumFiles(album: string): Array<{ name: string; thn: string }> {
+		return [
+			{ name: album, thn: `${album}/Light_${album}_stacked_thn.jpg` },
+			{ name: `${album}-sub`, thn: `${album}/Light_${album}_0001_thn.jpg` },
+			{ name: `${album}-sub`, thn: `${album}/Light_${album}_0002_thn.jpg` },
+		];
 	}
 }
 

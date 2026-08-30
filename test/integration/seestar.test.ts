@@ -247,7 +247,8 @@ describe("imaging", () => {
 		});
 
 		const structured = structuredOf(result);
-		expect(String(structured.url)).toMatch(/^http:\/\/seestar\.local\/MyWorks\//);
+		// The URL points at the telescope's own file server, which the fake stands in for.
+		expect(String(structured.url)).toContain("/MyWorks/M31/");
 		expect(structured.stacked_frames).toBeGreaterThan(0);
 	});
 });
