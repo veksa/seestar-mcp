@@ -138,3 +138,37 @@ describe.skipIf(!sirilPath)("astro_job", () => {
 		expect(existsSync(jobs[0]?.log_path as string)).toBe(true);
 	});
 });
+
+describe.skipIf(!sirilPath)("processing steps", () => {
+	it("removes the background gradient with Siril's own model", async () => {
+		const result = await client.callTool({
+			name: "astro_background_extract",
+			arguments: { session: "M31", wait: true, timeout_s: 120 },
+		});
+
+		expect(isError(result)).toBe(false);
+		const output = (structuredOf(result).result as { output?: string })?.output;
+		expect(await stat(output as string)).toBeTruthy();
+	}, 180_000);
+
+	it("stretches the stacked image", async () => {
+		const result = await client.callTool({
+			name: "astro_stretch",
+			arguments: { session: "M31", method: "asinh", amount: 50, wait: true, timeout_s: 120 },
+		});
+
+		expect(isError(result)).toBe(false);
+		expect(textOf(result)).toContain("asinh 50");
+	}, 180_000);
+
+	it("says plainly when a step needs a program that is not installed", async () => {
+		// StarNet is external and almost certainly absent; the failure must reach the caller.
+		const result = await client.callTool({
+			name: "astro_remove_stars",
+			arguments: { session: "M31", wait: true, timeout_s: 60 },
+		});
+
+		expect(isError(result)).toBe(true);
+		expect(textOf(result)).toMatch(/starnet|not installed|Error/i);
+	}, 120_000);
+});
