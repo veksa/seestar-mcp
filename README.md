@@ -1,5 +1,11 @@
 # seestar-mcp
 
+[![npm version](https://img.shields.io/npm/v/seestar-mcp.svg)](https://www.npmjs.com/package/seestar-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/seestar-mcp.svg)](https://www.npmjs.com/package/seestar-mcp)
+[![CI](https://github.com/veksa/seestar-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/veksa/seestar-mcp/actions/workflows/ci.yml)
+[![node](https://img.shields.io/node/v/seestar-mcp.svg)](https://nodejs.org)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 MCP server for ZWO Seestar telescopes (S50 / S50 Pro / S30) over [ASCOM Alpaca](https://ascom-standards.org/).
 
 Point your telescope at a target, image it, then stack and process what it captured — from Claude
