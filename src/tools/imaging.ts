@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { formatDuration } from "../format.js";
-import { findEvent } from "../seestar/events.js";
+import { findEvent, waitForEvent } from "../seestar/events.js";
 import type { Session } from "../session.js";
 import { guard, textResult } from "./result.js";
 
@@ -132,20 +132,39 @@ export function registerImagingTools(server: McpServer, session: Session): void 
 		{
 			title: "Plate solve",
 			description:
-				"Plate-solve the current field and report where the telescope is actually pointing.",
+				"Plate-solve the current field and report where the telescope is actually pointing. " +
+				"Solving takes a few seconds, so this waits for it to finish before reading the result.",
 			inputSchema: z.object({
 				read_only: z
 					.boolean()
 					.optional()
-					.describe("Only read the last result instead of solving again"),
+					.describe("Only read the result of the last solve, without solving again"),
+				timeout_s: z.number().min(5).max(300).optional().describe("Wait timeout, default 60s."),
 			}),
 		},
-		async ({ read_only }) =>
+		async ({ read_only, timeout_s }) =>
 			guard(async () => {
 				const seestar = session.seestar();
-				if (!read_only) await seestar.solve();
+				let note = "";
+
+				if (!read_only) {
+					await seestar.solve();
+					// Solving is asynchronous: reading the result straight away returns the previous
+					// solve, which is worse than useless — it looks like an answer.
+					const timeoutMs = (timeout_s ?? 60) * 1000;
+					const outcome = await waitForEvent(seestar.actions, "PlateSolve", {
+						timeoutMs,
+						pollIntervalMs: Math.max(200, Math.min(1_000, timeoutMs / 20)),
+					});
+					if (outcome.failed)
+						note = "\n\nThe solve did not succeed — the result below is the previous one.";
+					else if (!outcome.done) {
+						note = `\n\nStill solving after ${timeout_s ?? 60}s — the result below may be the previous one.`;
+					}
+				}
+
 				const result = await seestar.lastSolveResult();
-				return textResult(`Plate solve result:\n${JSON.stringify(result, null, 2)}`, {
+				return textResult(`Plate solve result:\n${JSON.stringify(result, null, 2)}${note}`, {
 					result: result as unknown,
 				});
 			}),
@@ -171,8 +190,8 @@ function registerReadOnlyImagingTools(server: McpServer, session: Session): void
 				subframe: z.boolean().optional().describe("Return the sub-frame variant"),
 			}),
 			outputSchema: z.object({
-				url: z.string(),
-				name: z.string(),
+				url: z.string().optional(),
+				name: z.string().optional(),
 				stacked_frames: z.number().optional(),
 			}),
 			annotations: { readOnlyHint: true },
@@ -191,12 +210,25 @@ function registerReadOnlyImagingTools(server: McpServer, session: Session): void
 				const stack = findEvent(events, "Stack");
 				const stacked = stack?.raw.stacked_frame;
 				const stackedFrames = typeof stacked === "number" ? stacked : undefined;
+				const frames =
+					stackedFrames === undefined
+						? ""
+						: `${stackedFrames} frames stacked so far in this session.`;
+
+				// The driver reports a null name when the album holds nothing matching yet, together
+				// with a URL that points at no file — say so rather than handing over a dead link.
+				if (!image.name) {
+					return textResult(
+						["No image saved yet.", frames, "Start a session with imaging_start."]
+							.filter(Boolean)
+							.join("\n"),
+						stackedFrames === undefined ? {} : { stacked_frames: stackedFrames },
+					);
+				}
 
 				const lines = [
 					`${image.name}: ${image.url}`,
-					stackedFrames === undefined
-						? ""
-						: `${stackedFrames} frames stacked so far in this session.`,
+					frames,
 					"",
 					"The URL is served by the telescope on your local network — open it to view the image.",
 				].filter(Boolean);

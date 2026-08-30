@@ -98,6 +98,7 @@ export class SeestarSim {
 	private stack: StackSession | undefined;
 	private autoFocusEndsAt = 0;
 	private parkEndsAt = 0;
+	private solveEndsAt = 0;
 	private lastImageIndex = 0;
 
 	// Scheduler
@@ -165,6 +166,11 @@ export class SeestarSim {
 			this.rightAscension = 0;
 			this.declination = 0;
 			this.setEvent("ScopeHome", { state: "complete", percent: 100 });
+		}
+
+		if (this.solveEndsAt && now >= this.solveEndsAt) {
+			this.solveEndsAt = 0;
+			this.setEvent("PlateSolve", { state: "complete", percent: 100 });
 		}
 
 		if (this.autoFocusEndsAt && now >= this.autoFocusEndsAt) {
@@ -577,7 +583,9 @@ export class SeestarSim {
 				this.stopImaging();
 				return { result: true };
 			case "start_solve":
-				this.setEvent("PlateSolve", { state: "complete", percent: 100 });
+				// Solving takes a few seconds on hardware, so it reports through the event stream.
+				this.solveEndsAt = this.now() + this.options.slewDurationMs;
+				this.setEvent("PlateSolve", { state: "working", percent: 0 });
 				return { result: true };
 			case "get_last_solve_result":
 			case "get_solve_result":
@@ -643,7 +651,16 @@ export class SeestarSim {
 		});
 	}
 
-	private lastImage(): { url: string; name: string } {
+	/**
+	 * The driver scans the newest album for a matching file. With nothing saved yet it returns a
+	 * null name and a URL that points at no file — reproduced here, because that is the state every
+	 * session starts in.
+	 */
+	private lastImage(): { url: string; name: string | null } {
+		if (this.lastImageIndex === 0) {
+			return { url: "http://seestar.local/MyWorks/.jpg", name: null };
+		}
+
 		const name = this.stack?.targetName ?? "M31";
 		return {
 			url: `http://seestar.local/MyWorks/${name}/Light_${name}_${this.lastImageIndex}.jpg`,

@@ -64,7 +64,12 @@ export interface ImagingOptions {
 
 export interface LastImage {
 	url: string;
-	name: string;
+	/**
+	 * Null when the album holds no matching frame yet — the driver builds this reply by scanning the
+	 * newest album and leaves the name unset if nothing matches, so an empty session reports null
+	 * here and a URL that points at nothing.
+	 */
+	name: string | null;
 }
 
 /** `-1` is how the Seestar API says "wherever the telescope is already pointing". */
