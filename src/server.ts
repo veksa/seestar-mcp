@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import type { ServerConfig } from "./config.js";
 import { Session } from "./session.js";
 import { registerDiscoveryTools } from "./tools/discovery.js";
+import { registerDownloadTools } from "./tools/download.js";
 import { registerGenericTools } from "./tools/generic.js";
 import { registerImagingTools } from "./tools/imaging.js";
 import { registerRawTools } from "./tools/raw.js";
@@ -37,6 +38,7 @@ export function createServer(config: ServerConfig): CreatedServer {
 		registerSeestarTools(server, session);
 		registerImagingTools(server, session);
 		registerSchedulerTools(server, session);
+		registerDownloadTools(server, session);
 		registerRawTools(server, session);
 	}
 

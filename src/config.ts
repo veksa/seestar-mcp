@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DeviceType } from "./alpaca/client.js";
 import { DEVICE_TYPES } from "./alpaca/client.js";
+import { defaultWorkDir } from "./workdir.js";
 
 /**
  * How the server was started.
@@ -25,6 +26,8 @@ export const configSchema = z.object({
 	/** Expose the raw firmware passthrough tools. */
 	allowRaw: z.boolean().default(true),
 	clientId: z.number().int().min(1).max(65535).optional(),
+	/** Where downloaded frames go. Shared by convention with astro-mcp, not by code. */
+	workDir: z.string().min(1),
 });
 
 export type ServerConfig = z.infer<typeof configSchema>;
@@ -44,6 +47,7 @@ Options:
   --allow-destructive    Allow shutdown and reboot tools
   --no-raw               Hide the raw firmware passthrough tools
   --client-id <number>   Fixed Alpaca ClientID
+  --work-dir <path>      Where downloaded frames go (env ASTRO_WORK_DIR, default ~/astro)
   -h, --help             Show this help
   -v, --version          Show the version
 
@@ -56,7 +60,7 @@ export function loadConfig(
 	argv: string[] = [],
 	env: NodeJS.ProcessEnv = process.env,
 ): ServerConfig {
-	const raw: Record<string, unknown> = {};
+	const raw: Record<string, unknown> = { workDir: defaultWorkDir(env) };
 
 	const fromEnv = <T>(name: string, parse: (value: string) => T): void => {
 		const value = env[name];
@@ -112,6 +116,9 @@ export function loadConfig(
 				break;
 			case "--client-id":
 				raw.clientId = toNumber("--client-id")(next());
+				break;
+			case "--work-dir":
+				raw.workDir = next();
 				break;
 			default:
 				throw new ConfigError(`unknown option ${argument}`);

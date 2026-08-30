@@ -1,4 +1,5 @@
 import type { SeestarActions } from "./actions.js";
+import { type AlbumListing, imageOrigin, parseAlbums } from "./albums.js";
 import { parseEvents, type SeestarEvent } from "./events.js";
 
 /**
@@ -176,6 +177,22 @@ export class SeestarDevice {
 			is_subframe: options.subframe ?? false,
 			is_thumb: options.thumbnail ?? false,
 		});
+	}
+
+	/** What the telescope has stored, as relative paths under its parent folder. */
+	async albums(): Promise<AlbumListing> {
+		return parseAlbums(await this.actions.methodSync("get_albums"));
+	}
+
+	/**
+	 * The telescope's own HTTP address.
+	 *
+	 * Learned from a complete URL the driver hands back, because the telescope is not necessarily
+	 * the machine running seestar_alp; `fallbackHost` is used when it has no image to point at yet.
+	 */
+	async imageBaseUrl(fallbackHost: string): Promise<string> {
+		const image = await this.lastImage().catch(() => undefined);
+		return imageOrigin(image?.url, fallbackHost);
 	}
 
 	startAutofocus(): Promise<unknown> {
