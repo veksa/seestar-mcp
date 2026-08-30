@@ -429,3 +429,110 @@ export function starRemovalCommands(options: {
 	if (options.starMask === false) parts.push("-nostarmask");
 	return [parts.join(" ")];
 }
+
+export interface SessionScriptOptions extends StackScriptOptions {
+	/** Gradient removal: Siril's own model, GraXpert's, or none. */
+	background?: "none" | "siril" | "graxpert";
+	denoise?: "none" | "siril" | "graxpert";
+	deconvolve?: boolean;
+	colorCalibrate?: boolean;
+	stretch?: "none" | "auto" | "asinh" | "ghs";
+	stretchAmount?: number;
+	removeStars?: boolean;
+	/** Final image: name without extension, plus a format. */
+	exportName?: string;
+	exportFormat?: "png" | "jpg" | "tif";
+	graxpertModel?: string;
+}
+
+/**
+ * The whole night in one script.
+ *
+ * Written as a single Siril run rather than a chain of them: the image stays loaded between steps,
+ * so there is no saving and reloading a 100 MB frame six times, and the log reads as one story. It
+ * is also how a person writing a Siril script would do it.
+ */
+export function buildSessionScript(options: SessionScriptOptions): string[] {
+	const script = buildStackScript(options);
+	const stacked = options.output;
+
+	script.push(`load ${quote(stacked)}`);
+
+	if (options.background === "graxpert") {
+		script.push(
+			...graxpertCommands("background", {
+				...(options.graxpertModel ? { model: options.graxpertModel } : {}),
+			}),
+		);
+	} else if (options.background === "siril") {
+		script.push(...backgroundCommands({}));
+	}
+
+	if (options.denoise === "graxpert") {
+		script.push(
+			...graxpertCommands("denoise", {
+				...(options.graxpertModel ? { model: options.graxpertModel } : {}),
+			}),
+		);
+	} else if (options.denoise === "siril") {
+		script.push(...denoiseCommands({}));
+	}
+
+	if (options.deconvolve) script.push(...deconvolveCommands({}));
+	if (options.colorCalibrate) script.push(...colorCalibrationCommands({}));
+
+	if (options.stretch && options.stretch !== "none") {
+		script.push(
+			...stretchCommands({
+				method: options.stretch,
+				...(options.stretchAmount !== undefined ? { amount: options.stretchAmount } : {}),
+			}),
+		);
+	}
+
+	// Star removal last: it works best on stretched data, and leaves a starless image loaded.
+	if (options.removeStars) script.push(...starRemovalCommands({}));
+
+	script.push(`save ${quote(`${stacked}_processed`)}`);
+
+	if (options.exportName) {
+		const format = options.exportFormat ?? "png";
+		if (format === "jpg") script.push(`savejpg ${quote(options.exportName)} 90`);
+		else if (format === "tif") script.push(`savetif ${quote(options.exportName)}`);
+		else script.push(`savepng ${quote(options.exportName)}`);
+	}
+
+	return script;
+}
+
+/** What each preset turns on. Named for what someone would ask for out loud. */
+export const PRESETS = {
+	/** Just make me a picture. */
+	quick: {
+		background: "none",
+		denoise: "none",
+		deconvolve: false,
+		colorCalibrate: false,
+		stretch: "auto",
+	},
+	/** The usual night: drop the worst frames, flatten the sky, fix the colour. */
+	standard: {
+		bestPercent: 90,
+		background: "siril",
+		denoise: "none",
+		deconvolve: false,
+		colorCalibrate: true,
+		stretch: "auto",
+	},
+	/** Everything, including the slow parts. */
+	full: {
+		bestPercent: 85,
+		background: "graxpert",
+		denoise: "graxpert",
+		deconvolve: true,
+		colorCalibrate: true,
+		stretch: "auto",
+	},
+} as const satisfies Record<string, Partial<SessionScriptOptions>>;
+
+export type PresetName = keyof typeof PRESETS;
