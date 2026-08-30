@@ -46,8 +46,18 @@ yarn typecheck
 yarn lint
 ```
 
-No telescope and no simulator are needed for the test suite: `test/fake/` implements an Alpaca server
-with Seestar semantics in-process.
+No telescope and no simulator are needed for that suite: `test/fake/` implements an Alpaca server
+with Seestar semantics in-process — including a mount that takes time to slew, the firmware event
+stream, and injectable failures.
+
+```sh
+yarn test:sim      # downloads the ASCOM simulators and tests against them
+```
+
+That second suite runs the same client against the [ASCOM Alpaca
+Simulators](https://github.com/ASCOMInitiative/ASCOM.Alpaca.Simulators), the reference
+implementation of the specification. The binaries are self-contained (no .NET runtime needed) and
+are cached in `.cache/`.
 
 ## License
 

@@ -24,3 +24,21 @@ jobs:
       - run: yarn lint
       - run: yarn typecheck
       - run: yarn test
+
+  # Runs the same client against the ASCOM Initiative's own simulators, which is where a misreading
+  # of the Alpaca specification shows up. Kept separate: it downloads ~50 MB and takes a minute.
+  omnisim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --immutable
+      - uses: actions/cache@v4
+        with:
+          path: .cache/omnisim
+          key: omnisim-${{ runner.os }}-${{ hashFiles('scripts/fetch-omnisim.mjs') }}
+      - run: yarn test:sim
