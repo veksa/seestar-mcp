@@ -15,8 +15,8 @@
 	"author": "Alex Khizhnyi",
 	"type": "module",
 	"bin": {
-		"seestar-mcp": "dist/index.js",
-		"astro-mcp": "dist/astro.js"
+		"astro-mcp": "dist/astro.js",
+		"seestar-mcp": "dist/index.js"
 	},
 	"main": "./dist/index.js",
 	"files": [
