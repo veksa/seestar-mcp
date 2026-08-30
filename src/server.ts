@@ -3,6 +3,8 @@ import type { ServerConfig } from "./config.js";
 import { Session } from "./session.js";
 import { registerDiscoveryTools } from "./tools/discovery.js";
 import { registerImagingTools } from "./tools/imaging.js";
+import { registerRawTools } from "./tools/raw.js";
+import { registerSchedulerTools } from "./tools/scheduler.js";
 import { registerSeestarTools } from "./tools/seestar.js";
 import { registerTelescopeTools } from "./tools/telescope.js";
 
@@ -32,6 +34,8 @@ export function createServer(config: ServerConfig): CreatedServer {
 	if (config.profile !== "generic") {
 		registerSeestarTools(server, session);
 		registerImagingTools(server, session);
+		registerSchedulerTools(server, session);
+		registerRawTools(server, session);
 	}
 
 	return { server, session };

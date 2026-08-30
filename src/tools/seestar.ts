@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { formatFields } from "../format.js";
-import { renderEvents } from "../seestar/events.js";
+import { renderEvents, type SeestarEvent, waitForEvent } from "../seestar/events.js";
 import type { Session } from "../session.js";
 import { guard, textResult } from "./result.js";
 
@@ -232,9 +232,14 @@ export function registerSeestarTools(server: McpServer, session: Session): void 
 					.boolean()
 					.optional()
 					.describe("True when the coordinates are J2000 (catalogue) rather than of-date"),
+				wait: z
+					.boolean()
+					.optional()
+					.describe("Wait for the goto to finish. Default false — poll seestar_events instead."),
+				timeout_s: z.number().min(5).max(900).optional().describe("Wait timeout, default 180s."),
 			}),
 		},
-		async ({ target_name, ra, dec, is_j2000 }) =>
+		async ({ target_name, ra, dec, is_j2000, wait, timeout_s }) =>
 			guard(async () => {
 				const result = await session.seestar().gotoTarget({
 					targetName: target_name,
@@ -251,10 +256,19 @@ export function registerSeestarTools(server: McpServer, session: Session): void 
 					);
 				}
 
-				return textResult(
-					`Going to ${target_name}.\n\nPoll seestar_events until AutoGoto reports complete.`,
-					{ target_name, ra, dec, is_j2000: is_j2000 ?? false },
-				);
+				const started = { target_name, ra, dec, is_j2000: is_j2000 ?? false };
+				if (!wait) {
+					return textResult(
+						`Going to ${target_name}.\n\nPoll seestar_events until AutoGoto reports complete.`,
+						started,
+					);
+				}
+
+				const outcome = await settle(session, "AutoGoto", timeout_s ?? 180);
+				return textResult(`${outcome.text}\n\n${renderEvents(outcome.events)}`, {
+					...started,
+					completed: outcome.done,
+				});
 			}),
 	);
 
@@ -410,6 +424,32 @@ export function registerSeestarTools(server: McpServer, session: Session): void 
 				return textResult(power === 0 ? "Dew heater off." : `Dew heater at ${power}%.`, { power });
 			}),
 	);
+}
+
+/**
+ * Wait for one firmware event to finish, and describe how it went.
+ *
+ * The poll interval is derived from the timeout so a short wait stays responsive without hammering
+ * a telescope that is going to take minutes.
+ */
+async function settle(
+	session: Session,
+	eventName: string,
+	timeoutSeconds: number,
+): Promise<{ done: boolean; text: string; events: SeestarEvent[] }> {
+	const timeoutMs = timeoutSeconds * 1000;
+	const result = await waitForEvent(session.seestar().actions, eventName, {
+		timeoutMs,
+		pollIntervalMs: Math.max(100, Math.min(1_000, timeoutMs / 10)),
+	});
+
+	const text = result.done
+		? `${eventName} complete.`
+		: result.failed
+			? `${eventName} did not finish: the telescope reported ${result.event?.state}.`
+			: `Still working after ${timeoutSeconds}s — the operation is still running.`;
+
+	return { done: result.done, text, events: result.events };
 }
 
 function pick<T>(key: string, value: T | undefined): Record<string, T> {
