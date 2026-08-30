@@ -1443,6 +1443,7 @@ __metadata:
     vitest: "npm:^4.1.11"
     zod: "npm:^4.5.4"
   bin:
+    astro-mcp: dist/astro.js
     seestar-mcp: dist/index.js
   languageName: unknown
   linkType: soft
