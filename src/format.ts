@@ -6,27 +6,43 @@
  * floats: `5.588` means nothing, `05h 35m 17s` is Orion.
  */
 
+/**
+ * Split a decimal quantity into whole units, minutes and seconds.
+ *
+ * Rounding is applied first and then carried, because rounding the seconds on their own produces
+ * "05h 59m 60.0s" for anything just short of the next unit.
+ */
+function sexagesimal(value: number, secondsDecimals: number): [number, number, string] {
+	const factor = 10 ** secondsDecimals;
+	let totalSeconds = Math.round(value * 3600 * factor) / factor;
+
+	const units = Math.floor(totalSeconds / 3600);
+	totalSeconds -= units * 3600;
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds - minutes * 60;
+
+	return [
+		units,
+		minutes,
+		seconds.toFixed(secondsDecimals).padStart(secondsDecimals > 0 ? 3 + secondsDecimals : 2, "0"),
+	];
+}
+
 /** Right ascension in hours (0..24) as `05h 35m 17.3s`. */
 export function formatRightAscension(hours: number): string {
 	if (!Number.isFinite(hours)) return "unknown";
 	const normalised = ((hours % 24) + 24) % 24;
-	const h = Math.floor(normalised);
-	const minutesTotal = (normalised - h) * 60;
-	const m = Math.floor(minutesTotal);
-	const s = (minutesTotal - m) * 60;
-	return `${pad(h)}h ${pad(m)}m ${s.toFixed(1).padStart(4, "0")}s`;
+	const [h, m, s] = sexagesimal(normalised, 1);
+	// Rounding can push 23:59:59.99 to a full 24 hours, which is 0 hours.
+	return `${pad(h % 24)}h ${pad(m)}m ${s}s`;
 }
 
 /** Declination in degrees (-90..90) as `+22° 00′ 52″`. */
 export function formatDeclination(degrees: number): string {
 	if (!Number.isFinite(degrees)) return "unknown";
 	const sign = degrees < 0 ? "-" : "+";
-	const absolute = Math.abs(degrees);
-	const d = Math.floor(absolute);
-	const minutesTotal = (absolute - d) * 60;
-	const m = Math.floor(minutesTotal);
-	const s = Math.round((minutesTotal - m) * 60);
-	return `${sign}${pad(d)}° ${pad(m)}′ ${pad(s)}″`;
+	const [d, m, s] = sexagesimal(Math.abs(degrees), 0);
+	return `${sign}${pad(d)}° ${pad(m)}′ ${s}″`;
 }
 
 /** Degrees as `45.0°`, for altitude and azimuth. */
