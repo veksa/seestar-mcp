@@ -42,3 +42,21 @@ jobs:
           path: .cache/omnisim
           key: omnisim-${{ runner.os }}-${{ hashFiles('scripts/fetch-omnisim.mjs') }}
       - run: yarn test:sim
+
+  # The processing side against a real Siril. Separate again: it downloads ~90 MB and the AppImage
+  # needs unpacking, which is worth proving on Linux rather than assuming.
+  siril:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --immutable
+      - uses: actions/cache@v4
+        with:
+          path: .cache/siril
+          key: siril-${{ runner.os }}-${{ hashFiles('scripts/fetch-siril.mjs') }}
+      - run: yarn test:siril
