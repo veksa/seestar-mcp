@@ -8,7 +8,7 @@ import { sessionPaths } from "../workdir.js";
 import { findTool, isFound } from "./binaries.js";
 import { discoveryEnv, type ProcessingConfig } from "./config.js";
 import { describeJob, type Job, type JobStore } from "./jobs.js";
-import { detectBayerPattern } from "./sessions.js";
+import { detectBayerPattern, nextVersionedName } from "./sessions.js";
 import {
 	buildExportScript,
 	buildStackScript,
@@ -198,7 +198,13 @@ export function registerPipelineTools(
 				session: z.string().optional(),
 				path: z.string().optional().describe("A directory, instead of a session"),
 				input: z.string().optional().describe("File to load, default 'stacked'"),
-				output: z.string().optional().describe("Output name without extension, default 'result'"),
+				output: z
+					.string()
+					.optional()
+					.describe(
+						"Output name without extension, default 'result'. A _v1, _v2, ... is appended, " +
+							"so an export never overwrites the one before it.",
+					),
 				format: z.enum(["png", "jpg", "tif"]).optional().describe("Default png"),
 				stretch: z.boolean().optional().describe("Auto-stretch before saving. Default true."),
 				quality: z.number().int().min(10).max(100).optional().describe("JPEG quality, default 90"),
@@ -216,9 +222,9 @@ export function registerPipelineTools(
 				}
 
 				const sirilPath = await requireSiril();
-				const output = input.output ?? "result";
 				const format = input.format ?? "png";
 				await mkdir(directories.result, { recursive: true });
+				const output = await nextVersionedName(directories.result, input.output ?? "result");
 
 				const script = buildExportScript({
 					inputDir: directories.output,

@@ -45,12 +45,18 @@ The two servers meet at a directory, not in code:
     │   ├── stacked.fit
     │   └── stacked_processed.fit
     ├── result/                 the finished pictures, and nothing else
-    │   └── m31.png
+    │   ├── m31_v1.png
+    │   └── m31_v2.png
     └── logs/                   one log per job, exactly what Siril printed
 ```
 
 A night of six hundred frames leaves as many files in `process/`. The picture you actually came
 for goes to `result/`, so it is not something you have to go looking for.
+
+Processing the same night twice is the normal case — a different stretch, a denoise, one more
+preset — and the interesting question is how this attempt compares to the last. So the name you
+ask for gets a `_v1`, `_v2`, … and a run never overwrites its predecessor. Numbering continues from
+the highest already in `result/`, whatever extension it was saved with.
 
 Point both servers at the same `--work-dir` and the telescope side fills it while the processing
 side reads it.

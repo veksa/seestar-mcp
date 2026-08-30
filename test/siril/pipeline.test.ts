@@ -152,8 +152,9 @@ describe.skipIf(!sirilPath)("astro_export", () => {
 
 		expect(isError(result)).toBe(false);
 		const output = (structuredOf(result).result as { output?: string })?.output;
-		// result/, not process/: the picture is what a person came for.
-		expect(output).toBe(join(workDir, "M31", "result", "m31.png"));
+		// result/, not process/: the picture is what a person came for, and _v1 because nothing
+		// of that name was there yet.
+		expect(output).toBe(join(workDir, "M31", "result", "m31_v1.png"));
 
 		const info = await stat(output as string);
 		expect(info.size).toBeGreaterThan(1000);
@@ -226,10 +227,29 @@ describe.skipIf(!sirilPath)("process_session", () => {
 
 		expect(isError(result)).toBe(false);
 		const image = (structuredOf(result).result as { image?: string })?.image;
-		expect(image).toBe(join(workDir, "M31", "result", "m31-quick.png"));
+		expect(image).toBe(join(workDir, "M31", "result", "m31-quick_v1.png"));
 
 		const header = readFileSync(image as string).subarray(0, 8);
 		expect([...header]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	}, 600_000);
+
+	it("numbers the next run rather than overwriting the last", async () => {
+		// The previous test already produced m31-quick_v1.png in this session's work directory.
+		const result = await client.callTool({
+			name: "process_session",
+			arguments: {
+				session: "M31",
+				preset: "quick",
+				output: "m31-quick.png",
+				wait: true,
+				timeout_s: 600,
+			},
+		});
+
+		expect(isError(result)).toBe(false);
+		const image = (structuredOf(result).result as { image?: string })?.image;
+		expect(image).toBe(join(workDir, "M31", "result", "m31-quick_v2.png"));
+		expect(existsSync(join(workDir, "M31", "result", "m31-quick_v1.png"))).toBe(true);
 	}, 600_000);
 
 	it("reports what it is about to run, so the steps are visible", async () => {

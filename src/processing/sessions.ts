@@ -107,6 +107,31 @@ async function isLinkedDirectory(
 		.catch(() => false);
 }
 
+/**
+ * The next free `name_vN` in a directory.
+ *
+ * Processing a session is a series of attempts, and the useful question is almost always how this
+ * one compares to the last — so a result never overwrites its predecessor. Numbering starts at v1
+ * and carries on from the highest already there, whatever extension it was saved with.
+ */
+export async function nextVersionedName(directory: string, base: string): Promise<string> {
+	const entries = await readdir(directory).catch(() => []);
+	const pattern = new RegExp(String.raw`^${escapeForRegExp(base)}_v(\d+)\.[^.]+$`, "i");
+
+	let highest = 0;
+	for (const entry of entries) {
+		const match = pattern.exec(entry);
+		if (match?.[1]) highest = Math.max(highest, Number(match[1]));
+	}
+
+	return `${base}_v${highest + 1}`;
+}
+
+/** An output name comes from a target name, so it has to be quoted before it becomes a pattern. */
+function escapeForRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, (character) => `\\${character}`);
+}
+
 export function classify(name: string): FrameFile["kind"] {
 	const extension = extname(name).toLowerCase();
 	if (FITS_EXTENSIONS.has(extension)) return "fits";

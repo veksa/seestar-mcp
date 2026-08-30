@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Client } from "@modelcontextprotocol/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { loadProcessingConfig } from "../../src/processing/config.js";
-import { detectBayerPattern } from "../../src/processing/sessions.js";
+import { detectBayerPattern, nextVersionedName } from "../../src/processing/sessions.js";
 import { seestarLightCards, writeFits } from "../fake/fits.js";
 import { connectProcessingClient, isError, structuredOf, textOf } from "../mcp-client.js";
 
@@ -111,6 +111,35 @@ describe("session_list", () => {
 		expect(textOf(result)).toContain("No sessions in");
 		expect(textOf(result)).toContain("imaging_download");
 		await rm(empty, { recursive: true, force: true });
+	});
+});
+
+describe("nextVersionedName", () => {
+	it("numbers from v1 and carries on from what is already there", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "astro-versions-"));
+
+		expect(await nextVersionedName(directory, "m27")).toBe("m27_v1");
+
+		await writeFile(join(directory, "m27_v1.jpg"), "x");
+		expect(await nextVersionedName(directory, "m27")).toBe("m27_v2");
+
+		// The extension does not matter, and a gap does not restart the numbering.
+		await writeFile(join(directory, "m27_v7.png"), "x");
+		expect(await nextVersionedName(directory, "m27")).toBe("m27_v8");
+
+		// Another target in the same directory is numbered on its own.
+		expect(await nextVersionedName(directory, "m31")).toBe("m31_v1");
+
+		await rm(directory, { recursive: true, force: true });
+	});
+
+	it("does not read a version out of a name that merely looks like one", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "astro-versions-"));
+		await writeFile(join(directory, "m27_v2_draft.jpg"), "x");
+		await writeFile(join(directory, "m27_vX.jpg"), "x");
+
+		expect(await nextVersionedName(directory, "m27")).toBe("m27_v1");
+		await rm(directory, { recursive: true, force: true });
 	});
 });
 

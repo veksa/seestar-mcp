@@ -7,7 +7,7 @@ import { sessionPaths } from "../workdir.js";
 import { findTool, isFound } from "./binaries.js";
 import { discoveryEnv, type ProcessingConfig } from "./config.js";
 import { describeJob, type JobStore } from "./jobs.js";
-import { detectBayerPattern } from "./sessions.js";
+import { detectBayerPattern, nextVersionedName } from "./sessions.js";
 import { buildSessionScript, PRESETS, type PresetName, runSirilScript } from "./siril.js";
 
 /**
@@ -45,7 +45,10 @@ export function registerSessionPipeline(
 				output: z
 					.string()
 					.optional()
-					.describe("Final image, e.g. m31.png. The extension picks the format."),
+					.describe(
+						"Final image, e.g. m31.png. The extension picks the format, and the name gets a " +
+							"_v1, _v2, ... so a run never overwrites the one before it.",
+					),
 				reject_worst_percent: z
 					.number()
 					.int()
@@ -102,7 +105,6 @@ export function registerSessionPipeline(
 				}
 
 				const preset = PRESETS[(input.preset ?? "standard") as PresetName];
-				const exportName = input.output ? stripExtension(input.output) : "result";
 				const exportFormat = input.output ? formatOf(input.output) : "png";
 
 				// Undemosaiced frames stack into a grey mosaic, so the default has to be right rather
@@ -111,6 +113,12 @@ export function registerSessionPipeline(
 
 				await mkdir(paths.process, { recursive: true });
 				await mkdir(paths.result, { recursive: true });
+
+				// After the directories exist, so the scan sees what earlier runs left.
+				const exportName = await nextVersionedName(
+					paths.result,
+					input.output ? stripExtension(input.output) : "result",
+				);
 
 				// Explicit arguments win over the preset; the preset wins over the plain defaults.
 				const script = buildSessionScript({
