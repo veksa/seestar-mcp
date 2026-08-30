@@ -93,12 +93,32 @@ describe("device_connect", () => {
 	});
 
 	it("does not claim a generic Alpaca device is a Seestar", async () => {
-		harness = await startHarness({ profile: "generic" }, { serverName: "ASCOM Alpaca Simulators" });
+		// "Alpaca" appears in the identity of every Alpaca device there is, so detection must key on
+		// the one word that is actually specific.
+		harness = await startHarness(
+			{},
+			{
+				serverName: "ASCOM Alpaca Simulators",
+				identity: {
+					name: "Alpaca Telescope Simulator",
+					description: "ASCOM Alpaca Simulators",
+					driverInfo: "Alpaca Telescope Simulator, ASCOM Initiative",
+				},
+			},
+		);
 
 		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
 
 		expect(structuredOf(result)).toMatchObject({ is_seestar: false });
 		expect(textOf(result)).toContain("generic Alpaca device");
+	});
+
+	it("recognises the real driver's own description as a Seestar", async () => {
+		harness = await startHarness();
+
+		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
+
+		expect(structuredOf(result)).toMatchObject({ is_seestar: true });
 	});
 });
 

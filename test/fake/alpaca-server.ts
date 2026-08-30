@@ -45,6 +45,8 @@ export interface FakeAlpacaOptions {
 	/** Device types this server serves. seestar_alp serves telescopes only. */
 	deviceTypes?: string[];
 	serverName?: string;
+	/** Override how the device describes itself, to stand in for a non-Seestar driver. */
+	identity?: { name?: string; description?: string; driverInfo?: string };
 	/** Start a UDP discovery responder as well. */
 	discovery?: boolean;
 }
@@ -84,6 +86,14 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 	const deviceNumbers = new Set(options.deviceNumbers ?? [0, 1]);
 	const deviceTypes = new Set(options.deviceTypes ?? ["telescope"]);
 	const serverName = options.serverName ?? "seestar_alp (fake)";
+	// The strings the real driver reports (device/telescope.py, TelescopeMetadata).
+	const identity = {
+		description: options.identity?.description ?? "Alpaca Driver for Seestar S50 Smart Telescope",
+		driverInfo:
+			options.identity?.driverInfo ??
+			"Alpaca Driver for Seestar S50 Smart Telescope\nImplements ITelescope",
+		name: options.identity?.name,
+	};
 	const requests: RecordedRequest[] = [];
 	const connected = new Map<number, boolean>();
 	const failures: FailureSpec[] = [];
@@ -190,7 +200,7 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 		}
 
 		if (request.method === "GET") {
-			const value = readProperty(sim, method, deviceNumber, connected, serverName);
+			const value = readProperty(sim, method, deviceNumber, connected, identity);
 			if (value === NOT_FOUND) {
 				respondText(response, 400, `unknown property ${method}`);
 				return;
@@ -300,17 +310,17 @@ function readProperty(
 	method: string,
 	deviceNumber: number,
 	connected: Map<number, boolean>,
-	serverName: string,
+	identity: { name?: string; description: string; driverInfo: string },
 ): unknown {
 	switch (method) {
 		case "connected":
 			return deviceNumber === 0 || (connected.get(deviceNumber) ?? false);
 		case "name":
-			return deviceNumber === 0 ? "Seestar Federation" : `Seestar ${deviceNumber}`;
+			return identity.name ?? (deviceNumber === 0 ? "Seestar Federation" : `Seestar ${deviceNumber}`);
 		case "description":
-			return serverName;
+			return identity.description;
 		case "driverinfo":
-			return "Seestar ALP (fake) driver";
+			return identity.driverInfo;
 		case "driverversion":
 			return "1.0";
 		case "interfaceversion":

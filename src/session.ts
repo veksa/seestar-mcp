@@ -155,7 +155,9 @@ export class Session {
 			device.name().catch(() => ""),
 		]);
 
-		const detected = /seestar|alp/i.test(`${description} ${driverInfo} ${name}`);
+		// Only "seestar": the driver calls itself "Seestar Smart Telescope" / "Alpaca Driver for
+		// Seestar S50", while matching "alp" would also catch every "Alpaca …" device there is.
+		const detected = /seestar/i.test(`${description} ${driverInfo} ${name}`);
 		this.seestarCache.set(key, detected);
 		return detected;
 	}
