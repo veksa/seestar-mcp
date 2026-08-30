@@ -13,3 +13,5 @@ PLAN.md
 !.yarn/plugins
 !.yarn/releases
 .pnp.*
+
+test/examples
