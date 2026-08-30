@@ -235,6 +235,30 @@ function quoteForCmd(value: string): string {
 }
 
 /** Run one of the external programs and return its output. Use this rather than execFile directly. */
+/**
+ * Variables that make Siril believe it was started from an msys2 shell.
+ *
+ * When the server runs from Git Bash on Windows these leak into every child process, and Siril then
+ * refuses to start its Python interpreter ("msys2 environment detected") — which silently kills
+ * `pyscript`, and with it the GraXpert and RC-Astro integrations. Verified against a real Siril
+ * 1.4.4: same binary, same machine, the error appears with MSYSTEM set and is gone without it.
+ */
+const MSYS_VARIABLES = /^(MSYSTEM|MSYS|MSYS2_|MINGW|CHERE_INVOKING|MSYSCON|ORIGINAL_PATH)/;
+
+/** A copy of `env` with the msys2 markers removed. Only matters on Windows. */
+export function sanitizeEnv(
+	env: NodeJS.ProcessEnv,
+	platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+	if (platform !== "win32") return env;
+
+	const cleaned: NodeJS.ProcessEnv = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (!MSYS_VARIABLES.test(key)) cleaned[key] = value;
+	}
+	return cleaned;
+}
+
 export async function execTool(
 	path: string,
 	args: string[],
@@ -245,17 +269,17 @@ export async function execTool(
 		env?: NodeJS.ProcessEnv;
 	} = {},
 ): Promise<{ stdout: string; stderr: string }> {
-	const call = invocation(
-		path,
-		args,
-		options.platform ?? process.platform,
-		options.env ?? process.env,
-	);
+	const platform = options.platform ?? process.platform;
+	// Caller-supplied variables add to the real environment rather than replacing it: a child that
+	// loses SystemRoot or COMSPEC cannot even start on Windows.
+	const env = sanitizeEnv({ ...process.env, ...(options.env ?? {}) }, platform);
+	const call = invocation(path, args, platform, env);
 
 	return run(call.command, call.args, {
 		timeout: options.timeoutMs ?? 60_000,
 		windowsHide: true,
 		maxBuffer: 8 * 1024 * 1024,
+		env,
 		...(call.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
 		...(options.cwd ? { cwd: options.cwd } : {}),
 	});
