@@ -144,14 +144,18 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		{
 			title: "Park the telescope",
 			description:
-				"Move the telescope to its park position and stop tracking. On a Seestar this closes " +
-				"the arm — the usual way to end a session.",
+				"Send the telescope to its park position and stop tracking. On a Seestar this closes " +
+				"the arm — the usual way to end a session. Parking is asynchronous: poll " +
+				"telescope_status until parked is true.",
 			inputSchema: z.object({}),
 		},
 		async () =>
 			guard(async () => {
 				await session.telescope().park();
-				return textResult("Parked. Tracking is off; unpark before slewing again.");
+				return textResult(
+					"Parking. Tracking is off.\n\nPoll telescope_status until parked is true; " +
+						"unpark before slewing again.",
+				);
 			}),
 	);
 
