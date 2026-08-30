@@ -1,0 +1,53 @@
+{
+	"name": "seestar-mcp",
+	"version": "0.1.0",
+	"description": "MCP server for ZWO Seestar telescopes over ASCOM Alpaca",
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"seestar",
+		"ascom",
+		"alpaca",
+		"astronomy",
+		"telescope"
+	],
+	"license": "MIT",
+	"author": "Alex Khizhnyi",
+	"type": "module",
+	"bin": {
+		"seestar-mcp": "dist/index.js"
+	},
+	"main": "./dist/index.js",
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"dev": "tsx src/index.ts",
+		"typecheck": "tsc -p tsconfig.test.json",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"inspect": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js",
+		"prepublishOnly": "npm run build"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/server": "^2.0.0",
+		"zod": "^4.5.4"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.14",
+		"@modelcontextprotocol/client": "^2.0.0",
+		"@types/node": "^24.10.1",
+		"tsx": "^4.23.13",
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.11"
+	}
+}
