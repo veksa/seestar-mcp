@@ -40,10 +40,10 @@ claude mcp add seestar -- npx -y seestar-mcp --host 127.0.0.1
 ## Development
 
 ```sh
-npm install
-npm test          # unit + integration against the built-in fake Alpaca server
-npm run typecheck
-npm run lint
+yarn install
+yarn test          # unit + integration against the built-in fake Alpaca server
+yarn typecheck
+yarn lint
 ```
 
 No telescope and no simulator are needed for the test suite: `test/fake/` implements an Alpaca server

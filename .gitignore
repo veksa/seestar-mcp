@@ -6,3 +6,10 @@ coverage/
 .env
 .DS_Store
 PLAN.md
+
+# yarn (node-modules linker: keep the lockfile, drop the rest)
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+.pnp.*
