@@ -1,0 +1,159 @@
+import { readdir, stat } from "node:fs/promises";
+import { extname, join } from "node:path";
+import { type FrameInfo, readFrameInfo } from "./fits.js";
+
+/**
+ * Reading what is on disk.
+ *
+ * A session is just a directory the telescope side filled with frames — see `src/workdir.ts` for
+ * the layout. Nothing here talks to a telescope; it only looks at files.
+ */
+
+const FITS_EXTENSIONS = new Set([".fit", ".fits", ".fts"]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".tif", ".tiff"]);
+
+export interface SessionSummary {
+	name: string;
+	path: string;
+	fitsFiles: number;
+	imageFiles: number;
+	sizeBytes: number;
+	modified: Date | undefined;
+}
+
+export interface FrameFile {
+	path: string;
+	name: string;
+	sizeBytes: number;
+	kind: "fits" | "image" | "other";
+}
+
+/** Every session directory under the work directory, newest first. */
+export async function listSessions(workDir: string): Promise<SessionSummary[]> {
+	const entries = await readdir(workDir, { withFileTypes: true }).catch(() => []);
+	const summaries: SessionSummary[] = [];
+
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+
+		const path = join(workDir, entry.name);
+		const files = await listFiles(path);
+		const modified = await newestModification(path);
+
+		summaries.push({
+			name: entry.name,
+			path,
+			fitsFiles: files.filter((file) => file.kind === "fits").length,
+			imageFiles: files.filter((file) => file.kind === "image").length,
+			sizeBytes: files.reduce((total, file) => total + file.sizeBytes, 0),
+			modified,
+		});
+	}
+
+	return summaries.sort(
+		(left, right) => (right.modified?.getTime() ?? 0) - (left.modified?.getTime() ?? 0),
+	);
+}
+
+/** Every file in a directory tree, classified. Follows subdirectories: raw/, process/ and so on. */
+export async function listFiles(root: string): Promise<FrameFile[]> {
+	const files: FrameFile[] = [];
+	const stack = [root];
+
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) break;
+
+		for (const entry of await readdir(current, { withFileTypes: true }).catch(() => [])) {
+			const path = join(current, entry.name);
+			if (entry.isDirectory()) {
+				stack.push(path);
+				continue;
+			}
+
+			const size = await stat(path)
+				.then((info) => info.size)
+				.catch(() => 0);
+
+			files.push({ path, name: entry.name, sizeBytes: size, kind: classify(entry.name) });
+		}
+	}
+
+	return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+export function classify(name: string): FrameFile["kind"] {
+	const extension = extname(name).toLowerCase();
+	if (FITS_EXTENSIONS.has(extension)) return "fits";
+	if (IMAGE_EXTENSIONS.has(extension)) return "image";
+	return "other";
+}
+
+export interface InspectionSummary {
+	directory: string;
+	frames: FrameInfo[];
+	/** Frames that could not be read, with the reason. */
+	unreadable: Array<{ path: string; reason: string }>;
+	imageFiles: number;
+	totalBytes: number;
+}
+
+/**
+ * Read the headers of every FITS frame in a directory.
+ *
+ * Only headers, so this stays fast even on a session of several hundred frames — enough to answer
+ * what was shot, for how long, at what gain, and whether the settings changed part-way through.
+ */
+export async function inspectDirectory(
+	directory: string,
+	options: { limit?: number } = {},
+): Promise<InspectionSummary> {
+	const files = await listFiles(directory);
+	const fits = files.filter((file) => file.kind === "fits");
+	const selected = options.limit ? fits.slice(0, options.limit) : fits;
+
+	const frames: FrameInfo[] = [];
+	const unreadable: Array<{ path: string; reason: string }> = [];
+
+	for (const file of selected) {
+		try {
+			frames.push(await readFrameInfo(file.path));
+		} catch (error) {
+			unreadable.push({
+				path: file.path,
+				reason: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
+	return {
+		directory,
+		frames,
+		unreadable,
+		imageFiles: files.filter((file) => file.kind === "image").length,
+		totalBytes: files.reduce((total, file) => total + file.sizeBytes, 0),
+	};
+}
+
+/** The distinct values of one field across a set of frames, most common first. */
+export function distinct<T>(frames: FrameInfo[], read: (frame: FrameInfo) => T | undefined): T[] {
+	const counts = new Map<T, number>();
+	for (const frame of frames) {
+		const value = read(frame);
+		if (value === undefined) continue;
+		counts.set(value, (counts.get(value) ?? 0) + 1);
+	}
+	return [...counts.entries()].sort((left, right) => right[1] - left[1]).map(([value]) => value);
+}
+
+async function newestModification(root: string): Promise<Date | undefined> {
+	const files = await listFiles(root);
+	let newest: Date | undefined;
+
+	for (const file of files) {
+		const info = await stat(file.path).catch(() => undefined);
+		if (info && (!newest || info.mtime > newest)) newest = info.mtime;
+	}
+
+	return newest;
+}

@@ -4,6 +4,7 @@ import { formatFields } from "../format.js";
 import { guard, textResult } from "../tools/result.js";
 import { findTools } from "./binaries.js";
 import { discoveryEnv, type ProcessingConfig } from "./config.js";
+import { registerSessionTools } from "./sessionTools.js";
 
 /**
  * Processing tools.
@@ -13,6 +14,8 @@ import { discoveryEnv, type ProcessingConfig } from "./config.js";
  * Nothing is bundled, so the first question is always which of them are actually present.
  */
 export function registerProcessingTools(server: McpServer, config: ProcessingConfig): void {
+	registerSessionTools(server, config);
+
 	server.registerTool(
 		"astro_tools",
 		{
