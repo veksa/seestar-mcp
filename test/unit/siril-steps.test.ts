@@ -9,6 +9,7 @@ import {
 	denoiseCommands,
 	graxpertCommands,
 	PRESETS,
+	shapeCommands,
 	starRemovalCommands,
 	stretchCommands,
 } from "../../src/processing/siril.js";
@@ -67,13 +68,14 @@ describe("background extraction", () => {
 });
 
 describe("denoise", () => {
-	it("runs Siril's own denoiser", () => {
-		expect(denoiseCommands({})).toEqual(["denoise"]);
-		expect(denoiseCommands({ modulation: 0.7 })).toEqual(["denoise -mod=0.7"]);
+	it("runs Siril's own denoiser, blending most of it back by default", () => {
+		// Full strength trades the grain for low-frequency mottle, which reads worse than the noise.
+		expect(denoiseCommands({})).toEqual(["denoise -mod=0.7"]);
+		expect(denoiseCommands({ modulation: 1 })).toEqual(["denoise -mod=1"]);
 	});
 
 	it("can skip the cosmetic correction it does by default", () => {
-		expect(denoiseCommands({ noCosmetic: true })).toEqual(["denoise -nocosmetic"]);
+		expect(denoiseCommands({ noCosmetic: true })).toEqual(["denoise -nocosmetic -mod=0.7"]);
 	});
 });
 
@@ -130,10 +132,19 @@ describe("colour calibration", () => {
 });
 
 describe("stretch", () => {
-	it("defaults to auto-stretch", () => {
-		expect(stretchCommands({})).toEqual(["autostretch"]);
-		expect(stretchCommands({ linked: true, shadowsClip: -2.8 })).toEqual([
-			"autostretch -linked -2.8",
+	it("defaults to auto-stretch, at a sky brightness someone would export at", () => {
+		// Not a bare "autostretch": Siril's own default target background is 0.25, which is the
+		// GUI's screen preview and leaves a real stack washed out at about 64/255.
+		expect(stretchCommands({})).toEqual(["autostretch -2.8 0.08"]);
+		expect(stretchCommands({ linked: true, targetBackground: 0.12 })).toEqual([
+			"autostretch -linked -2.8 0.12",
+		]);
+	});
+
+	it("keeps the clipping point when only the background is asked for", () => {
+		// targetbg is the second positional argument, so it cannot be given on its own.
+		expect(stretchCommands({ shadowsClip: -1.5, targetBackground: 0.1 })).toEqual([
+			"autostretch -1.5 0.1",
 		]);
 	});
 
@@ -159,6 +170,21 @@ describe("star removal", () => {
 		expect(starRemovalCommands({ stretch: true, stride: 128 })).toEqual([
 			"starnet -stretch -stride=128",
 		]);
+	});
+});
+
+describe("shapeCommands", () => {
+	it("puts the symmetry point above the sky, where the object is", () => {
+		// The same argument slot as autostretch's shadows clip, but the opposite intent: autostretch
+		// clips below its value, autoghs stretches hardest at it. Zero would amplify the noise.
+		expect(shapeCommands({})).toEqual(["autoghs -linked 3 0.1 -hp=0.9"]);
+		expect(shapeCommands({ symmetry: 3, amount: 1.5, highlights: 0.95 })).toEqual([
+			"autoghs -linked 3 1.5 -hp=0.95",
+		]);
+	});
+
+	it("can stretch the channels apart, for data whose colour was never calibrated", () => {
+		expect(shapeCommands({ linked: false })).toEqual(["autoghs 3 0.1 -hp=0.9"]);
 	});
 });
 
@@ -188,7 +214,7 @@ describe("buildSessionScript", () => {
 			"subsky -rbf",
 			"platesolve",
 			"pcc",
-			"autostretch",
+			"autostretch -linked -2.8 0.08",
 			"save stacked_processed",
 			"savepng m31",
 		]);
@@ -208,6 +234,64 @@ describe("buildSessionScript", () => {
 		// The FITS stays where the stack is; only the picture leaves.
 		expect(script).toContain("save stacked_processed");
 		expect(script).toContain(`savejpg ${join("/data/M31/result", "m31")} 90`);
+	});
+
+	it("links the channels when the colour has been calibrated, and not otherwise", () => {
+		// Siril's help for autostretch: "Do not use the unlinked version after color calibration,
+		// it will alter the white balance." Whether pcc ran is what decides it.
+		const base = { inputDir: "/a", outputDir: "/b", output: "stacked", stretch: "auto" } as const;
+
+		expect(buildSessionScript({ ...base, colorCalibrate: true })).toContain(
+			"autostretch -linked -2.8 0.08",
+		);
+		expect(buildSessionScript({ ...base, colorCalibrate: false })).toContain(
+			"autostretch -2.8 0.08",
+		);
+	});
+
+	it("calibrates the colour before denoising, not after", () => {
+		// pcc measures the flux of catalogued stars; denoise and deconvolution both alter the very
+		// fluxes it is about to measure, so they have to come after it.
+		const script = buildSessionScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "stacked",
+			colorCalibrate: true,
+			denoise: "siril",
+			deconvolve: true,
+		});
+
+		expect(script.indexOf("pcc")).toBeLessThan(script.indexOf("denoise -mod=0.7"));
+		expect(script.indexOf("pcc")).toBeLessThan(script.indexOf("makepsf stars"));
+	});
+
+	it("shapes after the stretch, never before it", () => {
+		const script = buildSessionScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "stacked",
+			colorCalibrate: true,
+			stretch: "auto",
+			shape: "ghs",
+		});
+
+		expect(script.indexOf("autostretch -linked -2.8 0.08")).toBeLessThan(
+			script.indexOf("autoghs -linked 3 0.1 -hp=0.9"),
+		);
+	});
+
+	it("does not shape data that was never stretched", () => {
+		// autoghs redistributes the tones a stretch produced; on linear data it does almost nothing,
+		// so asking for it without a stretch is a mistake worth not honouring.
+		const script = buildSessionScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "stacked",
+			stretch: "none",
+			shape: "ghs",
+		});
+
+		expect(script.some((line) => line.startsWith("autoghs"))).toBe(false);
 	});
 
 	it("puts star removal last, after the stretch", () => {

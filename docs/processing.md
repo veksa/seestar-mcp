@@ -104,6 +104,41 @@ usually, an internet connection.
 **Stretching is not optional.** Stacked data is linear: opened as-is it looks like a black
 rectangle. Every export stretches by default; turn it off only if you stretched already.
 
+**The sky should not be grey.** The auto stretch takes a target background, and Siril’s own default
+of 0.25 is the brightness of its screen preview — on a real stack it leaves the sky around 64/255,
+washed out and grainy. The default here is 0.08, which lands near 20/255; `stretch_target_bg` moves
+it. Do not aim for black: at 0 you lose the faint outer shells and the dimmest stars.
+
+**After `pcc`, the channels are stretched together.** Siril warns that the unlinked auto stretch
+alters the white balance, so any preset that calibrates colour passes `-linked` — nothing to set.
+
+**Denoise before the stretch, and calibrate colour before both.** The order is
+`subsky` → `pcc` → `denoise` → `stretch`. Colour first because `pcc` works by measuring the flux of
+catalogued stars, and denoising changes the fluxes it is about to measure. Denoise before the
+stretch because the auto stretch derives its curve from the image statistics: on cleaner data the
+same target background lifts the object further. On a 46-minute M 27 stack, denoising first raised
+the nebula from 57 to 64 of 255 while the sky stayed put.
+
+**Denoise is not free, at full strength.** Siril's denoiser trades fine grain for low-frequency
+mottle, and the mottle reads worse than the noise it replaced — `-indep` is the worst for this
+despite scoring best on any high-frequency noise measure. `denoise_amount` blends the result back
+towards the original; the default of 0.7 keeps most of the gain and little of the artefact.
+
+**`shape: "ghs"` lifts the object without lifting the sky.** The auto stretch sets the overall tone
+but treats every brightness alike, so a faint nebula comes up carrying the noise it sits in. A
+second hyperbolic pass over the already-stretched image fixes that — but only if its symmetry point
+is above the background. That point is `shape_symmetry`, in sigma above the sky, and it occupies
+the same argument slot as `autostretch`'s shadows clip while meaning the opposite thing:
+`autostretch` clips below its value, `autoghs` stretches hardest *at* it. At 0 the noise is what
+gets amplified; 2 lifts the sky along with the object; 3 leaves the sky where it was. Running it
+instead of the auto stretch rather than after it does almost nothing — on linear data the whole
+family flattens the image instead of stretching it.
+
+`shape_amount` is steep at the low end, so the default is a cautious 0.1. On the M 27 stack that
+took the nebula from 64 to 74 of 255 with the sky unmoved and *more* structure in the bright core
+than before; 0.8 reached 100 and started flattening that core into a white blob. `shape_highlights`
+(default 0.9) is what holds the core together — above it the curve goes linear again.
+
 **Star removal is last.** It works on stretched data, and gives you a starless image plus a star
 layer to recombine.
 

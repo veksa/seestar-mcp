@@ -306,16 +306,31 @@ export function registerStepTools(
 				.optional()
 				.describe("asinh: stretch factor, typically 1-1000. ghs: stretch amount."),
 			shadows_clip: z.number().optional().describe("Where to put the black point, in sigma"),
+			target_background: z
+				.number()
+				.min(0)
+				.max(1)
+				.optional()
+				.describe(
+					"auto: how bright the sky ends up, 0-1. Default 0.08 — a night sky wants about " +
+						"12-25 of 255, and Siril's own 0.25 is a screen preview, not an export.",
+				),
 			linked: z
 				.boolean()
 				.optional()
-				.describe("Stretch all channels together, keeping colour balance"),
+				.describe(
+					"Stretch all channels together. Required after colour calibration: the unlinked " +
+						"stretch alters the white balance.",
+				),
 		},
 		commands: (input) =>
 			stretchCommands({
 				...(input.method ? { method: input.method as "auto" | "asinh" | "ghs" } : {}),
 				...(input.amount !== undefined ? { amount: input.amount as number } : {}),
 				...(input.shadows_clip !== undefined ? { shadowsClip: input.shadows_clip as number } : {}),
+				...(input.target_background !== undefined
+					? { targetBackground: input.target_background as number }
+					: {}),
 				...(input.linked !== undefined ? { linked: input.linked as boolean } : {}),
 			}),
 	});

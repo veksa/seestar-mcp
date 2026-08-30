@@ -370,10 +370,12 @@ export function backgroundCommands(options: {
 }
 
 /** Siril's non-local Bayes denoise. Verified against `help denoise`. */
+export const DEFAULT_DENOISE_MODULATION = 0.7;
+
 export function denoiseCommands(options: { modulation?: number; noCosmetic?: boolean }): string[] {
 	const parts = ["denoise"];
 	if (options.noCosmetic) parts.push("-nocosmetic");
-	if (options.modulation !== undefined) parts.push(`-mod=${options.modulation}`);
+	parts.push(`-mod=${options.modulation ?? DEFAULT_DENOISE_MODULATION}`);
 	return [parts.join(" ")];
 }
 
@@ -438,11 +440,72 @@ export function colorCalibrationCommands(options: {
 	return commands;
 }
 
+/** Siril's own default shadows clipping point, in sigma below the histogram peak. */
+export const DEFAULT_SHADOWS_CLIP = -2.8;
+
+/**
+ * How bright the sky ends up, in [0, 1].
+ *
+ * Siril's own default is 0.25, which is the GUI's screen-preview brightness rather than a value
+ * anyone would export at: on a real stack it leaves the sky at about 64/255, washed out and grainy.
+ * A night sky wants roughly 12-25/255, so the default here is the low end of that.
+ */
+export const DEFAULT_TARGET_BACKGROUND = 0.08;
+
+/**
+ * Where the hyperbolic stretch puts its symmetry point, in sigma above the median.
+ *
+ * This is the one number that decides whether shaping helps or hurts, and it is not the same
+ * quantity as `autostretch`'s shadows clipping point despite sitting in the same argument slot:
+ * `autostretch` clips below it, `autoghs` stretches hardest at it. Put it at the background (0) and
+ * the noise is what gets amplified; put it two or three sigma up and the object is.
+ */
+export const DEFAULT_SHAPE_SYMMETRY = 3;
+
+/**
+ * How hard to shape, by default.
+ *
+ * The response is steep at the low end — on a 46-minute M 27 stack, 0.1 already took the nebula
+ * from 64 to 74 of 255 while the sky stayed put, and 0.8 pushed it to 100 and started flattening
+ * the bright core. Small is the safe direction: it is easy to ask for more, and impossible to get
+ * back detail that has already been compressed into white.
+ */
+export const DEFAULT_SHAPE_AMOUNT = 0.1;
+
+/** How far the stretch is allowed to reach into the highlights before going linear again. */
+export const DEFAULT_SHAPE_HIGHLIGHTS = 0.9;
+
+/**
+ * A second, gentler pass over the already-stretched image, to lift the object off the sky.
+ *
+ * The auto stretch sets the overall tone but treats every brightness alike, so a faint object comes
+ * up with the noise it is sitting in. This shapes what is already there: with the symmetry point
+ * above the background, the object gains and the sky does not move.
+ */
+export function shapeCommands(options: {
+	symmetry?: number;
+	amount?: number;
+	highlights?: number;
+	linked?: boolean;
+}): string[] {
+	const parts = ["autoghs"];
+	if (options.linked !== false) parts.push("-linked");
+
+	parts.push(
+		String(options.symmetry ?? DEFAULT_SHAPE_SYMMETRY),
+		String(options.amount ?? DEFAULT_SHAPE_AMOUNT),
+		`-hp=${options.highlights ?? DEFAULT_SHAPE_HIGHLIGHTS}`,
+	);
+
+	return [parts.join(" ")];
+}
+
 /** The three stretches Siril offers, each verified against its own help text. */
 export function stretchCommands(options: {
 	method?: "auto" | "asinh" | "ghs";
 	amount?: number;
 	shadowsClip?: number;
+	targetBackground?: number;
 	linked?: boolean;
 }): string[] {
 	const method = options.method ?? "auto";
@@ -461,7 +524,12 @@ export function stretchCommands(options: {
 
 	const parts = ["autostretch"];
 	if (options.linked) parts.push("-linked");
-	if (options.shadowsClip !== undefined) parts.push(String(options.shadowsClip));
+
+	// Both are positional and targetbg comes second, so asking for a background means naming the
+	// clipping point too, even when it is the one Siril would have used anyway.
+	const targetBackground = options.targetBackground ?? DEFAULT_TARGET_BACKGROUND;
+	parts.push(String(options.shadowsClip ?? DEFAULT_SHADOWS_CLIP), String(targetBackground));
+
 	return [parts.join(" ")];
 }
 
@@ -482,16 +550,32 @@ export interface SessionScriptOptions extends StackScriptOptions {
 	/** Gradient removal: Siril's own model, GraXpert's, or none. */
 	background?: "none" | "siril" | "graxpert";
 	denoise?: "none" | "siril" | "graxpert";
+	/**
+	 * How much of the denoised image to keep, 0-1, for Siril's denoiser.
+	 *
+	 * Full strength trades the fine grain for low-frequency mottle, which looks worse than the
+	 * noise it removed. Blending most of it back keeps nearly all the gain without the artefact.
+	 */
+	denoiseAmount?: number;
 	deconvolve?: boolean;
 	colorCalibrate?: boolean;
 	stretch?: "none" | "auto" | "asinh" | "ghs";
 	stretchAmount?: number;
+	/** Final sky brightness in [0, 1]. See DEFAULT_TARGET_BACKGROUND. */
+	stretchTargetBackground?: number;
+	/** A hyperbolic pass after the stretch, to lift the object without lifting the sky. */
+	shape?: "none" | "ghs";
+	shapeSymmetry?: number;
+	shapeAmount?: number;
+	shapeHighlights?: number;
 	removeStars?: boolean;
 	/** Final image: name without extension, plus a format. */
 	exportName?: string;
 	exportFormat?: "png" | "jpg" | "tif";
 	/** Where the final image goes. Defaults to the directory the intermediates are in. */
 	exportDir?: string;
+	/** JPEG quality, 10-100. Ignored by the other formats. */
+	exportQuality?: number;
 	graxpertModel?: string;
 }
 
@@ -518,6 +602,10 @@ export function buildSessionScript(options: SessionScriptOptions): string[] {
 		script.push(...backgroundCommands({}));
 	}
 
+	// Colour calibration before denoise and deconvolution, not after: pcc works by measuring the
+	// flux of catalogued stars, and both of those change the very fluxes it is about to measure.
+	if (options.colorCalibrate) script.push(...colorCalibrationCommands({}));
+
 	if (options.denoise === "graxpert") {
 		script.push(
 			...graxpertCommands("denoise", {
@@ -525,17 +613,39 @@ export function buildSessionScript(options: SessionScriptOptions): string[] {
 			}),
 		);
 	} else if (options.denoise === "siril") {
-		script.push(...denoiseCommands({}));
+		script.push(
+			...denoiseCommands({
+				...(options.denoiseAmount !== undefined ? { modulation: options.denoiseAmount } : {}),
+			}),
+		);
 	}
 
 	if (options.deconvolve) script.push(...deconvolveCommands({}));
-	if (options.colorCalibrate) script.push(...colorCalibrationCommands({}));
 
 	if (options.stretch && options.stretch !== "none") {
 		script.push(
 			...stretchCommands({
 				method: options.stretch,
+				// Siril's help is explicit: the unlinked stretch alters the white balance, so it must
+				// not follow a colour calibration. Linking the channels is what keeps pcc's work.
+				linked: options.colorCalibrate === true,
 				...(options.stretchAmount !== undefined ? { amount: options.stretchAmount } : {}),
+				...(options.stretchTargetBackground !== undefined
+					? { targetBackground: options.stretchTargetBackground }
+					: {}),
+			}),
+		);
+	}
+
+	// Shaping only makes sense on data that has already been stretched: it redistributes the tones
+	// the stretch produced, and on linear data it does almost nothing at all.
+	if (options.shape === "ghs" && options.stretch && options.stretch !== "none") {
+		script.push(
+			...shapeCommands({
+				linked: options.colorCalibrate === true,
+				...(options.shapeSymmetry !== undefined ? { symmetry: options.shapeSymmetry } : {}),
+				...(options.shapeAmount !== undefined ? { amount: options.shapeAmount } : {}),
+				...(options.shapeHighlights !== undefined ? { highlights: options.shapeHighlights } : {}),
 			}),
 		);
 	}
@@ -550,6 +660,7 @@ export function buildSessionScript(options: SessionScriptOptions): string[] {
 			...saveImageCommands(
 				imageTarget(options.exportName, options.exportDir),
 				options.exportFormat ?? "png",
+				options.exportQuality,
 			),
 		);
 	}

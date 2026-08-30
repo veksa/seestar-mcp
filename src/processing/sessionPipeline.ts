@@ -58,10 +58,66 @@ export function registerSessionPipeline(
 					.describe("Drop this share of the frames, worst FWHM first"),
 				background: z.enum(["none", "siril", "graxpert"]).optional(),
 				denoise: z.enum(["none", "siril", "graxpert"]).optional(),
+				denoise_amount: z
+					.number()
+					.min(0)
+					.max(1)
+					.optional()
+					.describe(
+						"How much of Siril's denoise to keep, 0-1. Default 0.7: full strength swaps the " +
+							"grain for blotches, which reads worse than the noise it removed.",
+					),
 				deconvolve: z.boolean().optional(),
 				color_calibrate: z.boolean().optional(),
 				stretch: z.enum(["none", "auto", "asinh", "ghs"]).optional(),
+				stretch_target_bg: z
+					.number()
+					.min(0)
+					.max(1)
+					.optional()
+					.describe(
+						"How bright the sky ends up, 0-1, for the auto stretch. Default 0.08; raise it " +
+							"towards 0.15 for a brighter sky, lower it for a darker one.",
+					),
+				shape: z
+					.enum(["none", "ghs"])
+					.optional()
+					.describe(
+						"A hyperbolic pass after the stretch that lifts the object without lifting the " +
+							"sky. Off by default; it is the step that separates a faint nebula from its noise.",
+					),
+				shape_symmetry: z
+					.number()
+					.optional()
+					.describe(
+						"Where the shaping is strongest, in sigma above the sky. Default 3. At 0 it " +
+							"amplifies the noise instead of the object; 2-3 is the useful range.",
+					),
+				shape_amount: z
+					.number()
+					.min(0)
+					.optional()
+					.describe(
+						"How hard to shape. Default 0.1 — the response is steep, and past about 0.8 the " +
+							"bright core starts flattening into a white blob.",
+					),
+				shape_highlights: z
+					.number()
+					.min(0)
+					.max(1)
+					.optional()
+					.describe(
+						"Above this the stretch goes linear, which is what keeps a bright core from " +
+							"turning into a white blob. Default 0.9.",
+					),
 				remove_stars: z.boolean().optional().describe("Needs StarNet installed"),
+				quality: z
+					.number()
+					.int()
+					.min(10)
+					.max(100)
+					.optional()
+					.describe("JPEG quality, default 90. Only used when output ends in .jpg."),
 				debayer: z
 					.boolean()
 					.optional()
@@ -133,13 +189,24 @@ export function registerSessionPipeline(
 						: {}),
 					...(input.background ? { background: input.background } : {}),
 					...(input.denoise ? { denoise: input.denoise } : {}),
+					...(input.denoise_amount !== undefined ? { denoiseAmount: input.denoise_amount } : {}),
 					...(input.deconvolve !== undefined ? { deconvolve: input.deconvolve } : {}),
 					...(input.color_calibrate !== undefined ? { colorCalibrate: input.color_calibrate } : {}),
 					...(input.stretch ? { stretch: input.stretch } : {}),
+					...(input.stretch_target_bg !== undefined
+						? { stretchTargetBackground: input.stretch_target_bg }
+						: {}),
+					...(input.shape ? { shape: input.shape } : {}),
+					...(input.shape_symmetry !== undefined ? { shapeSymmetry: input.shape_symmetry } : {}),
+					...(input.shape_amount !== undefined ? { shapeAmount: input.shape_amount } : {}),
+					...(input.shape_highlights !== undefined
+						? { shapeHighlights: input.shape_highlights }
+						: {}),
 					...(input.remove_stars !== undefined ? { removeStars: input.remove_stars } : {}),
 					exportName,
 					exportFormat,
 					exportDir: paths.result,
+					...(input.quality !== undefined ? { exportQuality: input.quality } : {}),
 				});
 
 				const logPath = join(paths.logs, `process-${Date.now()}.log`);
