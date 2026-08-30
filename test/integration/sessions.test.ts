@@ -160,3 +160,36 @@ describe("astro_inspect", () => {
 		expect(textOf(result)).toContain("session_list");
 	});
 });
+
+describe("astro_inspect on already-stacked masters", () => {
+	it("does not add up the exposures of masters, and says what they are", async () => {
+		// What PixInsight writes after integrating a Seestar session: EXPTIME is the exposure of one
+		// sub-frame, and adding two of those together would claim a minute for hours of data.
+		await writeFits(join(workDir, "masters", "process", "ircut.fit"), {
+			cards: seestarLightCards({
+				IMAGETYP: "Master Light",
+				OBJECT: "Unknown",
+				EXPTIME: 30,
+				RA: 92.3057207825894,
+				DEC: 15.7949383453664,
+			}),
+		});
+		await writeFits(join(workDir, "masters", "process", "lp.fit"), {
+			cards: seestarLightCards({ IMAGETYP: "Master Light", OBJECT: "Unknown", EXPTIME: 30 }),
+		});
+
+		const connected = await connect();
+		const result = await connected.callTool({
+			name: "astro_inspect",
+			arguments: { session: "masters" },
+		});
+
+		expect(structuredOf(result)).toMatchObject({ frames: 2, masters: true });
+		expect(structuredOf(result).integration_seconds).toBeUndefined();
+		expect(textOf(result)).toContain("already integrated");
+		expect(textOf(result)).toContain("30s per sub-frame");
+		// "Unknown" is not a target name; the coordinates are what identifies the field.
+		expect(textOf(result)).toContain("RA 06h 09m 13.4s");
+		expect(textOf(result)).toContain("Dec +15° 47′ 42″");
+	});
+});

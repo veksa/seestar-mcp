@@ -47,6 +47,14 @@ export interface FrameInfo {
 	/** Frames the telescope had already stacked into this file, when it says so. */
 	stackedFrames?: number;
 	imageType?: string;
+	/**
+	 * True for an already-stacked frame. Matters because EXPTIME on a master is the exposure of one
+	 * sub, not the total — summing it across masters gives a number that is wrong by hours.
+	 */
+	isMaster?: boolean;
+	/** Where the frame points, when the header says. Useful when OBJECT is "Unknown". */
+	rightAscensionDeg?: number;
+	declinationDeg?: number;
 	sizeBytes: number;
 	header: FitsHeader;
 }
@@ -149,7 +157,15 @@ export async function readFrameInfo(path: string): Promise<FrameInfo> {
 		...defined("focalLengthMm", number("FOCALLEN")),
 		...defined("stackedFrames", number("STACKCNT", "NCOMBINE", "STACKED")),
 		...defined("imageType", text("IMAGETYP", "FRAME")),
+		...defined("isMaster", isMasterFrame(text("IMAGETYP", "FRAME"))),
+		...defined("rightAscensionDeg", number("RA", "CRVAL1")),
+		...defined("declinationDeg", number("DEC", "CRVAL2")),
 	};
+}
+
+/** Stacking software writes "Master Light", "Master Dark" and the like into IMAGETYP. */
+function isMasterFrame(imageType: string | undefined): boolean | undefined {
+	return imageType === undefined ? undefined : /master/i.test(imageType);
 }
 
 /**

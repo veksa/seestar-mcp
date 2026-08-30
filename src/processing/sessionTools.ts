@@ -1,6 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { formatDuration, formatFields } from "../format.js";
+import {
+	formatDeclination,
+	formatDuration,
+	formatFields,
+	formatRightAscension,
+} from "../format.js";
 import { errorResult, guard, textResult } from "../tools/result.js";
 import { sessionPaths } from "../workdir.js";
 import type { ProcessingConfig } from "./config.js";
@@ -133,7 +138,11 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 					);
 				}
 
-				const objects = distinct(summary.frames, (frame) => frame.object);
+				const masters = summary.frames.filter((frame) => frame.isMaster);
+				const allMasters = masters.length === summary.frames.length && masters.length > 0;
+				const objects = distinct(summary.frames, (frame) => frame.object).filter(
+					(name) => name.toLowerCase() !== "unknown",
+				);
 				const exposures = distinct(summary.frames, (frame) => frame.exposureSeconds);
 				const gains = distinct(summary.frames, (frame) => frame.gain);
 				const filters = distinct(summary.frames, (frame) => frame.filter);
@@ -144,13 +153,23 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 						["directory", directory],
 						["frames", `${summary.frames.length}`],
 						["target", objects.join(", ") || undefined],
-						["exposure", exposures.length > 0 ? `${exposures.join("s, ")}s` : undefined],
 						[
-							"integration",
+							"exposure",
+							// Shown as "sub exposure" below when these are masters; no need to say it twice.
+							!allMasters && exposures.length > 0 ? `${exposures.join("s, ")}s` : undefined,
+						],
+						[
+							// On a master, EXPTIME is the exposure of one sub-frame, so adding them up
+							// across masters would report minutes for what is really hours.
+							allMasters ? "sub exposure" : "integration",
 							integration > 0
-								? `${formatDuration(integration)} (${summary.frames.length} frames)`
+								? allMasters
+									? `${exposures.join("s, ")}s per sub-frame`
+									: `${formatDuration(integration)} (${summary.frames.length} frames)`
 								: undefined,
 						],
+						["image type", allMasters ? "stacked masters — already integrated" : undefined],
+						["coordinates", coordinates(summary.frames)],
 						["gain", gains.length > 0 ? gains.join(", ") : undefined],
 						["filter", filters.join(", ") || undefined],
 						["size", `${(summary.totalBytes / 1e6).toFixed(1)} MB`],
@@ -177,10 +196,11 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 					image_files: summary.imageFiles,
 					size_mb: Number((summary.totalBytes / 1e6).toFixed(1)),
 					...(objects[0] !== undefined ? { object: objects[0] } : {}),
+					...(allMasters ? { masters: true } : {}),
 					...(exposures.length > 0 ? { exposure_seconds: exposures } : {}),
 					...(gains.length > 0 ? { gains } : {}),
 					...(filters.length > 0 ? { filters } : {}),
-					...(integration > 0 ? { integration_seconds: integration } : {}),
+					...(integration > 0 && !allMasters ? { integration_seconds: integration } : {}),
 				});
 			}),
 	);
@@ -188,6 +208,22 @@ export function registerSessionTools(server: McpServer, config: ProcessingConfig
 
 function totalIntegration(frames: FrameInfo[]): number {
 	return frames.reduce((total, frame) => total + (frame.exposureSeconds ?? 0), 0);
+}
+
+/**
+ * Where the frames point, in the sexagesimal form a person can look up.
+ *
+ * Worth showing because plenty of software writes OBJECT as "Unknown" while still recording a full
+ * astrometric solution — the coordinates are then the only way to say what was imaged.
+ */
+function coordinates(frames: FrameInfo[]): string | undefined {
+	const frame = frames.find(
+		(candidate) =>
+			candidate.rightAscensionDeg !== undefined && candidate.declinationDeg !== undefined,
+	);
+	if (!frame) return undefined;
+
+	return `RA ${formatRightAscension((frame.rightAscensionDeg as number) / 15)}  Dec ${formatDeclination(frame.declinationDeg as number)}`;
 }
 
 function temperatureRange(frames: FrameInfo[]): string | undefined {
