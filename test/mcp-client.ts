@@ -1,6 +1,8 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { createMcpHandler } from "@modelcontextprotocol/server";
+import { createMcpHandler, type McpServer } from "@modelcontextprotocol/server";
 import { loadConfig, type ServerConfig } from "../src/config.js";
+import type { ProcessingConfig } from "../src/processing/config.js";
+import { createProcessingServer } from "../src/processing/server.js";
 import { createServer } from "../src/server.js";
 
 /**
@@ -12,7 +14,11 @@ import { createServer } from "../src/server.js";
  */
 export async function connectClient(overrides: Partial<ServerConfig> = {}): Promise<Client> {
 	const config: ServerConfig = { ...loadConfig([], {}), ...overrides };
-	const handler = createMcpHandler(() => createServer(config).server);
+	return connectToFactory(() => createServer(config).server);
+}
+
+async function connectToFactory(factory: () => McpServer): Promise<Client> {
+	const handler = createMcpHandler(factory);
 
 	const transport = new StreamableHTTPClientTransport(new URL("http://seestar.test/mcp"), {
 		fetch: (url, init) => handler.fetch(new Request(url, init)),
@@ -24,6 +30,11 @@ export async function connectClient(overrides: Partial<ServerConfig> = {}): Prom
 	);
 	await client.connect(transport);
 	return client;
+}
+
+/** The same, for the processing server — a separate process in real use, a separate factory here. */
+export async function connectProcessingClient(config: ProcessingConfig): Promise<Client> {
+	return connectToFactory(() => createProcessingServer(config));
 }
 
 /** The text a tool returned, joined — what a person would read in the transcript. */

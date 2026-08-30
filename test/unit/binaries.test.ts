@@ -8,6 +8,7 @@ import {
 	findTools,
 	invocation,
 	isFound,
+	sanitizeEnv,
 } from "../../src/processing/binaries.js";
 import { pathWith, writeFakeBinary } from "../fake/binaries.js";
 
@@ -128,6 +129,27 @@ describe("execTool", () => {
 		const { stdout } = await execTool(executable, ["--version"]);
 
 		expect(stdout).toContain("siril 1.4.4");
+	});
+});
+
+describe("sanitizeEnv", () => {
+	it("drops the msys2 markers that break Siril's Python support on Windows", () => {
+		const cleaned = sanitizeEnv(
+			{
+				PATH: "C:\\bin",
+				MSYSTEM: "MINGW64",
+				MSYS2_PATH_TYPE: "inherit",
+				HOME: "C:\\Users\\me",
+			},
+			"win32",
+		);
+
+		expect(cleaned).toEqual({ PATH: "C:\\bin", HOME: "C:\\Users\\me" });
+	});
+
+	it("leaves the environment alone everywhere else", () => {
+		const env = { PATH: "/usr/bin", MSYSTEM: "irrelevant here" };
+		expect(sanitizeEnv(env, "linux")).toBe(env);
 	});
 });
 
