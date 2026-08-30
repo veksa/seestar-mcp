@@ -172,3 +172,38 @@ describe.skipIf(!sirilPath)("processing steps", () => {
 		expect(textOf(result)).toMatch(/starnet|not installed|Error/i);
 	}, 120_000);
 });
+
+describe.skipIf(!sirilPath)("process_session", () => {
+	it("takes a session from frames to a finished PNG in one call", async () => {
+		const result = await client.callTool({
+			name: "process_session",
+			arguments: {
+				session: "M31",
+				// Colour calibration needs a plate solve against a star catalog, which synthetic
+				// frames cannot satisfy — the quick preset is the one that runs offline.
+				preset: "quick",
+				output: "m31-quick.png",
+				wait: true,
+				timeout_s: 600,
+			},
+		});
+
+		expect(isError(result)).toBe(false);
+		const image = (structuredOf(result).result as { image?: string })?.image;
+		expect(image).toMatch(/m31-quick\.png$/);
+
+		const header = readFileSync(image as string).subarray(0, 8);
+		expect([...header]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	}, 600_000);
+
+	it("reports what it is about to run, so the steps are visible", async () => {
+		const result = await client.callTool({
+			name: "process_session",
+			arguments: { session: "M31", preset: "standard", wait: false },
+		});
+
+		expect(textOf(result)).toContain("subsky -rbf");
+		expect(textOf(result)).toContain("-filter-fwhm=90%");
+		expect(textOf(result)).toContain("astro_job");
+	}, 60_000);
+});

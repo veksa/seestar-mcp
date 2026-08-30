@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
 	backgroundCommands,
 	buildOperationScript,
+	buildSessionScript,
 	colorCalibrationCommands,
 	deconvolveCommands,
 	denoiseCommands,
 	graxpertCommands,
+	PRESETS,
 	starRemovalCommands,
 	stretchCommands,
 } from "../../src/processing/siril.js";
@@ -156,5 +158,102 @@ describe("star removal", () => {
 		expect(starRemovalCommands({ stretch: true, stride: 128 })).toEqual([
 			"starnet -stretch -stride=128",
 		]);
+	});
+});
+
+describe("buildSessionScript", () => {
+	it("runs the whole night in one Siril session, with the image staying loaded", () => {
+		const script = buildSessionScript({
+			inputDir: "/data/M31/raw",
+			outputDir: "/data/M31/process",
+			output: "stacked",
+			bestPercent: 90,
+			background: "siril",
+			colorCalibrate: true,
+			stretch: "auto",
+			exportName: "m31",
+			exportFormat: "png",
+		});
+
+		expect(script).toEqual([
+			"requires 1.4.0",
+			"setext fit",
+			"cd /data/M31/raw",
+			"convert light -out=/data/M31/process",
+			"cd /data/M31/process",
+			"register light",
+			"stack r_light rej w 3 3 -norm=addscale -filter-fwhm=90% -out=stacked",
+			"load stacked",
+			"subsky -rbf",
+			"platesolve",
+			"pcc",
+			"autostretch",
+			"save stacked_processed",
+			"savepng m31",
+		]);
+	});
+
+	it("puts star removal last, after the stretch", () => {
+		const script = buildSessionScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "stacked",
+			stretch: "auto",
+			removeStars: true,
+		});
+
+		expect(script.indexOf("starnet")).toBeGreaterThan(script.indexOf("autostretch"));
+	});
+
+	it("uses GraXpert for both AI steps when asked", () => {
+		const script = buildSessionScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "stacked",
+			background: "graxpert",
+			denoise: "graxpert",
+			graxpertModel: "3.0.1",
+		});
+
+		expect(script).toContain("pyscript GraXpert-AI.py -bge -model='3.0.1'");
+		expect(script).toContain("pyscript GraXpert-AI.py -denoise -model='3.0.1'");
+	});
+
+	it("skips every optional step when nothing is asked for", () => {
+		const script = buildSessionScript({
+			inputDir: "/a",
+			outputDir: "/b",
+			output: "stacked",
+			background: "none",
+			denoise: "none",
+			stretch: "none",
+		});
+
+		expect(script.filter((line) => /subsky|denoise|pcc|autostretch|starnet/.test(line))).toEqual(
+			[],
+		);
+		expect(script.at(-1)).toBe("save stacked_processed");
+	});
+});
+
+describe("presets", () => {
+	it("quick does the minimum: no gradient work, no colour, just a stretch", () => {
+		expect(PRESETS.quick).toMatchObject({ background: "none", denoise: "none", stretch: "auto" });
+	});
+
+	it("standard drops the worst frames and fixes the sky and colour", () => {
+		expect(PRESETS.standard).toMatchObject({
+			bestPercent: 90,
+			background: "siril",
+			colorCalibrate: true,
+		});
+	});
+
+	it("full turns on the AI steps, which is what needs GraXpert", () => {
+		expect(PRESETS.full).toMatchObject({
+			background: "graxpert",
+			denoise: "graxpert",
+			deconvolve: true,
+		});
 	});
 });
