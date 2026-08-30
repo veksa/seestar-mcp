@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { type FrameInfo, isCfa, readFrameInfo } from "./fits.js";
 
@@ -34,9 +34,9 @@ export async function listSessions(workDir: string): Promise<SessionSummary[]> {
 	const summaries: SessionSummary[] = [];
 
 	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-
 		const path = join(workDir, entry.name);
+		// Same reason as listFiles: a session directory is allowed to be a link elsewhere.
+		if (!entry.isDirectory() && !(await isLinkedDirectory(entry, path))) continue;
 		const files = await listFiles(path);
 		const modified = await newestModification(path);
 
@@ -55,18 +55,32 @@ export async function listSessions(workDir: string): Promise<SessionSummary[]> {
 	);
 }
 
-/** Every file in a directory tree, classified. Follows subdirectories: raw/, process/ and so on. */
+/**
+ * Every file in a directory tree, classified. Follows subdirectories: raw/, process/ and so on.
+ *
+ * Symlinks are followed too, and a Windows junction is a symlink as far as `readdir` is concerned:
+ * pointing raw/ at frames that live on another drive is ordinary once a session runs to hundreds of
+ * gigabytes, and a walk that skipped them would report an empty session rather than an error. Each
+ * directory is visited once, by its resolved path, so a link back up the tree cannot loop.
+ */
 export async function listFiles(root: string): Promise<FrameFile[]> {
 	const files: FrameFile[] = [];
 	const stack = [root];
+	const visited = new Set<string>();
 
 	while (stack.length > 0) {
 		const current = stack.pop();
 		if (!current) break;
 
+		const key = await realpath(current).catch(() => current);
+		if (visited.has(key)) continue;
+		visited.add(key);
+
 		for (const entry of await readdir(current, { withFileTypes: true }).catch(() => [])) {
 			const path = join(current, entry.name);
-			if (entry.isDirectory()) {
+
+			// A symlink needs stat() to say what it points at; readdir only reports the link itself.
+			if (entry.isDirectory() || (await isLinkedDirectory(entry, path))) {
 				stack.push(path);
 				continue;
 			}
@@ -80,6 +94,17 @@ export async function listFiles(root: string): Promise<FrameFile[]> {
 	}
 
 	return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/** Whether a directory entry is a symlink that resolves to a directory. */
+async function isLinkedDirectory(
+	entry: { isSymbolicLink(): boolean },
+	path: string,
+): Promise<boolean> {
+	if (!entry.isSymbolicLink()) return false;
+	return stat(path)
+		.then((info) => info.isDirectory())
+		.catch(() => false);
 }
 
 export function classify(name: string): FrameFile["kind"] {

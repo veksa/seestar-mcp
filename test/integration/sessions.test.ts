@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Client } from "@modelcontextprotocol/client";
@@ -78,6 +78,28 @@ describe("session_list", () => {
 		]);
 		expect(sessions.find((entry) => entry.name === "M31")?.fits_files).toBe(10);
 		expect(textOf(result)).toContain("10 FITS");
+	});
+
+	it("counts frames that raw/ only links to", async () => {
+		// Sessions outgrow the disk they started on, so raw/ is often a link to another drive — a
+		// junction on Windows, a symlink elsewhere. readdir() reports both as links, not directories,
+		// so a walk that trusted isDirectory() alone reported an empty session.
+		const linked = await mkdtemp(join(tmpdir(), "astro-linked-"));
+		const frames = await mkdtemp(join(tmpdir(), "astro-frames-"));
+		await writeFits(join(frames, "light_0001.fit"), {
+			cards: seestarLightCards({ OBJECT: "M 27" }),
+		});
+		await mkdir(join(linked, "m27"), { recursive: true });
+		await symlink(frames, join(linked, "m27", "raw"), "junction");
+
+		const connected = await connect({ workDir: linked });
+		const result = await connected.callTool({ name: "session_list", arguments: {} });
+
+		const sessions = structuredOf(result).sessions as Array<{ name: string; fits_files: number }>;
+		expect(sessions.find((entry) => entry.name === "m27")?.fits_files).toBe(1);
+
+		await rm(linked, { recursive: true, force: true });
+		await rm(frames, { recursive: true, force: true });
 	});
 
 	it("says where it looked when there is nothing", async () => {
