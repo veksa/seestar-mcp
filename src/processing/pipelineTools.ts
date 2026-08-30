@@ -41,11 +41,25 @@ export function registerPipelineTools(
 	};
 
 	const resolveDirectories = (session?: string, path?: string) => {
-		if (path) return { input: path, output: path, logs: join(path, "logs"), name: path };
+		if (path) {
+			return {
+				input: path,
+				output: path,
+				result: join(path, "result"),
+				logs: join(path, "logs"),
+				name: path,
+			};
+		}
 		if (!session) return undefined;
 
 		const paths = sessionPaths(config.workDir, session);
-		return { input: paths.raw, output: paths.process, logs: paths.logs, name: paths.name };
+		return {
+			input: paths.raw,
+			output: paths.process,
+			result: paths.result,
+			logs: paths.logs,
+			name: paths.name,
+		};
 	};
 
 	server.registerTool(
@@ -204,11 +218,13 @@ export function registerPipelineTools(
 				const sirilPath = await requireSiril();
 				const output = input.output ?? "result";
 				const format = input.format ?? "png";
+				await mkdir(directories.result, { recursive: true });
 
 				const script = buildExportScript({
 					inputDir: directories.output,
 					input: input.input ?? "stacked",
 					output,
+					outputDir: directories.result,
 					format,
 					...(input.stretch !== undefined ? { stretch: input.stretch } : {}),
 					...(input.quality !== undefined ? { quality: input.quality } : {}),
@@ -231,7 +247,7 @@ export function registerPipelineTools(
 							throw new Error(result.error ?? `Siril exited with code ${result.exitCode}`);
 						}
 
-						return { output: join(directories.output, `${output}.${format}`) };
+						return { output: join(directories.result, `${output}.${format}`) };
 					},
 				});
 
@@ -261,6 +277,7 @@ export function registerPipelineTools(
 				const directories = resolveDirectories(input.session, input.path) ?? {
 					input: config.workDir,
 					output: config.workDir,
+					result: join(config.workDir, "result"),
 					logs: join(config.workDir, "logs"),
 					name: "work directory",
 				};

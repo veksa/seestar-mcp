@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { invocation, sanitizeEnv } from "./binaries.js";
 
 /**
@@ -137,6 +137,8 @@ export interface ExportScriptOptions {
 	input: string;
 	/** Output name, without extension. */
 	output: string;
+	/** Where the image goes, when that is not the directory it was loaded from. */
+	outputDir?: string;
 	format?: "png" | "jpg" | "tif";
 	/** Apply Siril's auto-stretch before saving — linear data looks black otherwise. */
 	stretch?: boolean;
@@ -155,15 +157,32 @@ export function buildExportScript(options: ExportScriptOptions): string[] {
 
 	if (options.stretch !== false) script.push("autostretch");
 
-	if (format === "jpg") {
-		script.push(`savejpg ${quote(options.output)} ${options.quality ?? 90}`);
-	} else if (format === "tif") {
-		script.push(`savetif ${quote(options.output)}`);
-	} else {
-		script.push(`savepng ${quote(options.output)}`);
-	}
+	script.push(
+		...saveImageCommands(imageTarget(options.output, options.outputDir), format, options.quality),
+	);
 
 	return script;
+}
+
+/**
+ * Where Siril should write the picture.
+ *
+ * Siril's save commands take a path, not just a name, so sending the result to a sibling directory
+ * is a matter of naming it — no second script and no moving the file afterwards.
+ */
+function imageTarget(name: string, directory: string | undefined): string {
+	return directory ? join(directory, name) : name;
+}
+
+/** `savepng` / `savejpg` / `savetif`, picked by format. Verified against their help text. */
+function saveImageCommands(
+	target: string,
+	format: "png" | "jpg" | "tif",
+	quality?: number,
+): string[] {
+	if (format === "jpg") return [`savejpg ${quote(target)} ${quality ?? 90}`];
+	if (format === "tif") return [`savetif ${quote(target)}`];
+	return [`savepng ${quote(target)}`];
 }
 
 /** Siril accepts quoted arguments, which is how paths with spaces get through. */
@@ -455,6 +474,8 @@ export interface SessionScriptOptions extends StackScriptOptions {
 	/** Final image: name without extension, plus a format. */
 	exportName?: string;
 	exportFormat?: "png" | "jpg" | "tif";
+	/** Where the final image goes. Defaults to the directory the intermediates are in. */
+	exportDir?: string;
 	graxpertModel?: string;
 }
 
@@ -509,10 +530,12 @@ export function buildSessionScript(options: SessionScriptOptions): string[] {
 	script.push(`save ${quote(`${stacked}_processed`)}`);
 
 	if (options.exportName) {
-		const format = options.exportFormat ?? "png";
-		if (format === "jpg") script.push(`savejpg ${quote(options.exportName)} 90`);
-		else if (format === "tif") script.push(`savetif ${quote(options.exportName)}`);
-		else script.push(`savepng ${quote(options.exportName)}`);
+		script.push(
+			...saveImageCommands(
+				imageTarget(options.exportName, options.exportDir),
+				options.exportFormat ?? "png",
+			),
+		);
 	}
 
 	return script;

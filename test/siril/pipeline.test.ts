@@ -152,7 +152,8 @@ describe.skipIf(!sirilPath)("astro_export", () => {
 
 		expect(isError(result)).toBe(false);
 		const output = (structuredOf(result).result as { output?: string })?.output;
-		expect(output).toMatch(/m31\.png$/);
+		// result/, not process/: the picture is what a person came for.
+		expect(output).toBe(join(workDir, "M31", "result", "m31.png"));
 
 		const info = await stat(output as string);
 		expect(info.size).toBeGreaterThan(1000);
@@ -225,7 +226,7 @@ describe.skipIf(!sirilPath)("process_session", () => {
 
 		expect(isError(result)).toBe(false);
 		const image = (structuredOf(result).result as { image?: string })?.image;
-		expect(image).toMatch(/m31-quick\.png$/);
+		expect(image).toBe(join(workDir, "M31", "result", "m31-quick.png"));
 
 		const header = readFileSync(image as string).subarray(0, 8);
 		expect([...header]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

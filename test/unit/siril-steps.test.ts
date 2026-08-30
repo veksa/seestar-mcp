@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	backgroundCommands,
@@ -191,6 +192,22 @@ describe("buildSessionScript", () => {
 			"save stacked_processed",
 			"savepng m31",
 		]);
+	});
+
+	it("writes the finished picture to the result directory, not among the intermediates", () => {
+		const script = buildSessionScript({
+			inputDir: "/data/M31/raw",
+			outputDir: "/data/M31/process",
+			output: "stacked",
+			stretch: "auto",
+			exportName: "m31",
+			exportFormat: "jpg",
+			exportDir: "/data/M31/result",
+		});
+
+		// The FITS stays where the stack is; only the picture leaves.
+		expect(script).toContain("save stacked_processed");
+		expect(script).toContain(`savejpg ${join("/data/M31/result", "m31")} 90`);
 	});
 
 	it("puts star removal last, after the stretch", () => {

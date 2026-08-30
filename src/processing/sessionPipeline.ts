@@ -66,7 +66,14 @@ export function registerSessionPipeline(
 						"Demosaic one-shot-colour frames. Left unset it follows the frames' BAYERPAT " +
 							"card, which every Seestar sub-frame carries.",
 					),
-				wait: z.boolean().optional().describe("Block until it finishes. Default false."),
+				wait: z
+					.boolean()
+					.optional()
+					.describe(
+						"Block until it finishes. Default false, and worth leaving so: a session of a few " +
+							"hundred frames outlasts the host's own request timeout, which no timeout_s here " +
+							"can extend.",
+					),
 				timeout_s: z.number().min(30).max(21600).optional().describe("Wait timeout, default 1800s"),
 			}),
 		},
@@ -80,6 +87,7 @@ export function registerSessionPipeline(
 					? {
 							raw: input.path,
 							process: input.path,
+							result: join(input.path, "result"),
 							logs: join(input.path, "logs"),
 							name: input.path,
 						}
@@ -102,6 +110,7 @@ export function registerSessionPipeline(
 				const debayer = input.debayer ?? (await detectBayerPattern(paths.raw)) !== undefined;
 
 				await mkdir(paths.process, { recursive: true });
+				await mkdir(paths.result, { recursive: true });
 
 				// Explicit arguments win over the preset; the preset wins over the plain defaults.
 				const script = buildSessionScript({
@@ -122,6 +131,7 @@ export function registerSessionPipeline(
 					...(input.remove_stars !== undefined ? { removeStars: input.remove_stars } : {}),
 					exportName,
 					exportFormat,
+					exportDir: paths.result,
 				});
 
 				const logPath = join(paths.logs, `process-${Date.now()}.log`);
@@ -142,7 +152,7 @@ export function registerSessionPipeline(
 						}
 
 						return {
-							image: join(paths.process, `${exportName}.${exportFormat}`),
+							image: join(paths.result, `${exportName}.${exportFormat}`),
 							fits: join(paths.process, "stacked_processed.fit"),
 							duration_seconds: Math.round(result.durationMs / 1000),
 						};

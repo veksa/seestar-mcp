@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildExportScript,
@@ -179,6 +180,19 @@ describe("buildExportScript", () => {
 			"autostretch",
 			"savepng m31",
 		]);
+	});
+
+	it("saves the picture beside the intermediates only when told nowhere else", () => {
+		const script = buildExportScript({
+			inputDir: "/data/process",
+			input: "stacked",
+			output: "m31",
+			outputDir: "/data/result",
+		});
+
+		// cd stays on the directory the FITS is in; the save carries the path.
+		expect(script).toContain("cd /data/process");
+		expect(script).toContain(`savepng ${join("/data/result", "m31")}`);
 	});
 
 	it("can skip the stretch, for data that is already stretched", () => {

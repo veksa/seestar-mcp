@@ -10,10 +10,14 @@ import { join, resolve } from "node:path";
  *
  *   <work dir>/<session>/raw/       frames as they came off the telescope
  *   <work dir>/<session>/process/   intermediate files
+ *   <work dir>/<session>/result/    the finished pictures
  *   <work dir>/<session>/logs/      output of each external program
+ *
+ * result/ is separate from process/ so that the one file a person actually wants is not buried
+ * among the several hundred the stack left behind.
  */
 
-export const SESSION_DIRECTORIES = ["raw", "process", "logs"] as const;
+export const SESSION_DIRECTORIES = ["raw", "process", "result", "logs"] as const;
 
 export function defaultWorkDir(env: NodeJS.ProcessEnv = process.env): string {
 	return resolve(env.ASTRO_WORK_DIR ?? join(homedir(), "astro"));
@@ -24,6 +28,8 @@ export interface SessionPaths {
 	root: string;
 	raw: string;
 	process: string;
+	/** Where the finished image lands, away from the intermediates. */
+	result: string;
 	logs: string;
 }
 
@@ -34,6 +40,7 @@ export function sessionPaths(workDir: string, name: string): SessionPaths {
 		root,
 		raw: join(root, "raw"),
 		process: join(root, "process"),
+		result: join(root, "result"),
 		logs: join(root, "logs"),
 	};
 }

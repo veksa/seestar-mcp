@@ -43,10 +43,14 @@ The two servers meet at a directory, not in code:
     ├── raw/                    what imaging_download fetched from the telescope
     ├── process/                the sequence, the stack, and every intermediate
     │   ├── stacked.fit
-    │   ├── stacked_processed.fit
+    │   └── stacked_processed.fit
+    ├── result/                 the finished pictures, and nothing else
     │   └── m31.png
     └── logs/                   one log per job, exactly what Siril printed
 ```
+
+A night of six hundred frames leaves as many files in `process/`. The picture you actually came
+for goes to `result/`, so it is not something you have to go looking for.
 
 Point both servers at the same `--work-dir` and the telescope side fills it while the processing
 side reads it.
@@ -67,7 +71,8 @@ Every step can be overridden — `background: "graxpert"`, `denoise: "none"`, `r
 and the tool prints the Siril script it is about to run before it runs it.
 
 It returns a job id. A real session of two hundred frames takes minutes, so follow it with
-`astro_job` rather than waiting.
+`astro_job` rather than waiting. `wait: true` exists for small jobs only — a long one outlives the
+host's own request timeout, and no `timeout_s` on this side can extend that.
 
 ## Or step by step
 
