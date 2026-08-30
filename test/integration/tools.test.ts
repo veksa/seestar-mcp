@@ -219,9 +219,14 @@ describe("mount control", () => {
 		});
 		expect(harness.fake.sim.tracking).toBe(true);
 
+		// Parking is asynchronous, in the fake as on real hardware: the call returns at once and
+		// telescope_status is how you learn it has arrived — exactly what the tool tells you to do.
 		await harness.client.callTool({ name: "telescope_park", arguments: {} });
-		expect(harness.fake.sim.atPark).toBe(true);
 		expect(harness.fake.sim.tracking).toBe(false);
+
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		const status = await harness.client.callTool({ name: "telescope_status", arguments: {} });
+		expect(structuredOf(status)).toMatchObject({ at_park: true, slewing: false });
 	});
 
 	it("aborts a slew in progress", async () => {

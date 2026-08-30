@@ -97,6 +97,7 @@ export class SeestarSim {
 	private startupEndsAt = 0;
 	private stack: StackSession | undefined;
 	private autoFocusEndsAt = 0;
+	private parkEndsAt = 0;
 	private lastImageIndex = 0;
 
 	// Scheduler
@@ -158,6 +159,14 @@ export class SeestarSim {
 			this.setEvent("Initialise", { state: "complete", percent: 100 });
 		}
 
+		if (this.parkEndsAt && now >= this.parkEndsAt) {
+			this.parkEndsAt = 0;
+			this.atPark = true;
+			this.rightAscension = 0;
+			this.declination = 0;
+			this.setEvent("ScopeHome", { state: "complete", percent: 100 });
+		}
+
 		if (this.autoFocusEndsAt && now >= this.autoFocusEndsAt) {
 			this.autoFocusEndsAt = 0;
 			this.setEvent("AutoFocus", { state: "complete", percent: 100 });
@@ -180,7 +189,8 @@ export class SeestarSim {
 
 	get slewing(): boolean {
 		this.settle();
-		return this.slew !== undefined;
+		// A mount on its way to the park position is still moving.
+		return this.slew !== undefined || this.parkEndsAt !== 0;
 	}
 
 	get isStacking(): boolean {
@@ -247,24 +257,29 @@ export class SeestarSim {
 
 	abortSlew(): void {
 		this.settle();
+		this.parkEndsAt = 0;
 		if (this.slew) {
 			this.setEvent(this.slew.event, { state: "cancel" });
 			this.slew = undefined;
 		}
 	}
 
+	/**
+	 * Parking is asynchronous in ASCOM: the call returns at once and `atpark` turns true when the
+	 * mount has actually got there. Modelled that way on purpose — clients that assume otherwise
+	 * work against the real simulator and fail on hardware.
+	 */
 	park(): void {
 		this.settle();
 		this.slew = undefined;
 		this.stack = undefined;
 		this.tracking = false;
-		this.atPark = true;
-		this.rightAscension = 0;
-		this.declination = 0;
-		this.setEvent("ScopeHome", { state: "complete" });
+		this.parkEndsAt = this.now() + this.options.slewDurationMs;
+		this.setEvent("ScopeHome", { state: "working", percent: 0 });
 	}
 
 	unpark(): void {
+		this.parkEndsAt = 0;
 		this.atPark = false;
 	}
 

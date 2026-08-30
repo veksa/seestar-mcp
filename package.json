@@ -34,7 +34,9 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"inspect": "yarn build && yarn dlx @modelcontextprotocol/inspector node dist/index.js",
-		"prepublishOnly": "npm run build"
+		"prepublishOnly": "yarn build",
+		"sim:fetch": "node scripts/fetch-omnisim.mjs",
+		"test:sim": "node scripts/fetch-omnisim.mjs && vitest run --config vitest.sim.config.ts"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/server": "^2.0.0",
