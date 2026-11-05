@@ -82,6 +82,9 @@ export class Session {
 				port,
 				timeoutMs: this.config.timeoutMs,
 				...(this.config.clientId ? { clientId: this.config.clientId } : {}),
+				...(this.config.password
+					? { auth: { username: this.config.username, password: this.config.password } }
+					: {}),
 			});
 			this.clients.set(key, client);
 		}

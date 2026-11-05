@@ -65,6 +65,13 @@ export function explain(error: unknown): string {
 	}
 
 	if (error instanceof AlpacaHttpError) {
+		if (error.status === 401) {
+			return (
+				`${error.message}\n\nThe Alpaca server requires a password. Restart this server with ` +
+				"--password (and --username if it is not User), or turn authorization off in the " +
+				"Alpaca server's settings page."
+			);
+		}
 		return error.status === 404
 			? `${error.message}\n\nThat endpoint does not exist on this server — check the device type and number.`
 			: error.message;

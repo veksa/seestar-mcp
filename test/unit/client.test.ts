@@ -143,3 +143,41 @@ describe("AlpacaClient", () => {
 		await expect(client.management<number[]>("apiversions")).resolves.toEqual([1]);
 	});
 });
+
+describe("AlpacaClient authorization", () => {
+	it("sends HTTP Basic credentials to a protected server", async () => {
+		const protectedFake = await startFakeAlpaca({
+			credentials: { username: "User", password: "s3cret" },
+		});
+		try {
+			protectedFake.setConnected(1, true);
+			protectedFake.sim.rightAscension = 7.25;
+			const authorised = new AlpacaClient({
+				host: protectedFake.host,
+				port: protectedFake.port,
+				auth: { username: "User", password: "s3cret" },
+			});
+
+			await expect(authorised.get("telescope", 1, "rightascension")).resolves.toBe(7.25);
+		} finally {
+			await protectedFake.close();
+		}
+	});
+
+	it("reports a missing password as HTTP 401", async () => {
+		const protectedFake = await startFakeAlpaca({
+			credentials: { username: "User", password: "s3cret" },
+		});
+		try {
+			const anonymous = new AlpacaClient({ host: protectedFake.host, port: protectedFake.port });
+
+			const error = await expectFailure(
+				anonymous.get("telescope", 1, "rightascension"),
+				AlpacaHttpError,
+			);
+			expect(error.status).toBe(401);
+		} finally {
+			await protectedFake.close();
+		}
+	});
+});

@@ -43,6 +43,8 @@ export interface AlpacaClientOptions {
 	timeoutMs?: number;
 	/** Extra attempts for idempotent (GET) requests after a transport error or 5xx. */
 	retries?: number;
+	/** HTTP Basic credentials, for a server with "Require Authorization" turned on. */
+	auth?: { username: string; password: string };
 	/** Injected for tests. */
 	fetch?: typeof globalThis.fetch;
 }
@@ -92,6 +94,7 @@ export class AlpacaClient {
 	private readonly timeoutMs: number;
 	private readonly retries: number;
 	private readonly fetchImpl: typeof globalThis.fetch;
+	private readonly authorization: string | undefined;
 	private transactionId = 0;
 
 	constructor(options: AlpacaClientOptions) {
@@ -102,6 +105,9 @@ export class AlpacaClient {
 		this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.retries = options.retries ?? DEFAULT_RETRIES;
 		this.fetchImpl = options.fetch ?? globalThis.fetch;
+		this.authorization = options.auth
+			? `Basic ${Buffer.from(`${options.auth.username}:${options.auth.password}`).toString("base64")}`
+			: undefined;
 	}
 
 	/** `http://host:port` — the root every Alpaca URL hangs off. */
@@ -233,7 +239,11 @@ export class AlpacaClient {
 			response = await this.fetchImpl(url, {
 				...init,
 				signal,
-				headers: { Accept: "application/json", ...init.headers },
+				headers: {
+					Accept: "application/json",
+					...(this.authorization ? { Authorization: this.authorization } : {}),
+					...init.headers,
+				},
 			});
 		} catch (error) {
 			const timedOut = timeoutSignal.aborted;

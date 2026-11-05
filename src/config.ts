@@ -30,6 +30,9 @@ export const configSchema = z.object({
 	/** Expose the raw firmware passthrough tools. */
 	allowRaw: z.boolean().default(true),
 	clientId: z.number().int().min(1).max(65535).optional(),
+	/** HTTP Basic credentials for a server with authorization on. The built-in server's user is "User". */
+	username: z.string().min(1).default("User"),
+	password: z.string().min(1).optional(),
 	/** Where downloaded frames go. Shared by convention with astro-mcp, not by code. */
 	workDir: z.string().min(1),
 });
@@ -51,6 +54,8 @@ Options:
   --allow-destructive    Allow shutdown and reboot tools
   --no-raw               Hide the raw firmware passthrough tools
   --client-id <number>   Fixed Alpaca ClientID
+  --username <name>      User for a password-protected server, default User (env SEESTAR_USERNAME)
+  --password <secret>    Password for a password-protected server (env SEESTAR_PASSWORD)
   --work-dir <path>      Where downloaded frames go (env ASTRO_WORK_DIR, default ~/astro)
   -h, --help             Show this help
   -v, --version          Show the version
@@ -81,6 +86,8 @@ export function loadConfig(
 	fromEnv("SEESTAR_ALLOW_DESTRUCTIVE", toBoolean);
 	fromEnv("SEESTAR_ALLOW_RAW", toBoolean);
 	fromEnv("SEESTAR_CLIENT_ID", toNumber("SEESTAR_CLIENT_ID"));
+	fromEnv("SEESTAR_USERNAME", (value) => value);
+	fromEnv("SEESTAR_PASSWORD", (value) => value);
 
 	for (let index = 0; index < argv.length; index++) {
 		const argument = argv[index] as string;
@@ -120,6 +127,12 @@ export function loadConfig(
 				break;
 			case "--client-id":
 				raw.clientId = toNumber("--client-id")(next());
+				break;
+			case "--username":
+				raw.username = next();
+				break;
+			case "--password":
+				raw.password = next();
 				break;
 			case "--work-dir":
 				raw.workDir = next();

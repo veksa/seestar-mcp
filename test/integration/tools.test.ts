@@ -164,6 +164,28 @@ describe("device_connect", () => {
 	});
 });
 
+describe("a password-protected server", () => {
+	const credentials = { username: "User", password: "s3cret" };
+
+	it("explains how to pass the password", async () => {
+		harness = await startHarness({}, { credentials });
+
+		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
+
+		expect(isError(result)).toBe(true);
+		expect(textOf(result)).toContain("--password");
+	});
+
+	it("connects with the password", async () => {
+		harness = await startHarness({ password: "s3cret" }, { credentials });
+
+		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
+
+		expect(isError(result)).toBe(false);
+		expect(structuredOf(result)).toMatchObject({ connected: true });
+	});
+});
+
 describe("telescope_status", () => {
 	it("explains what to do when no device has been selected", async () => {
 		harness = await startHarness({ host: undefined });

@@ -54,6 +54,8 @@ export interface FakeAlpacaOptions {
 	 * so every `action` answers ActionNotImplemented.
 	 */
 	builtin?: boolean;
+	/** Require HTTP Basic credentials on the device API, as "Require Authorization" does. */
+	credentials?: { username: string; password: string };
 }
 
 export interface FakeAlpaca {
@@ -131,6 +133,17 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 			path: url.pathname,
 			params,
 		});
+
+		// Only the device API is protected; management stays open, as on the real server.
+		if (options.credentials && url.pathname.startsWith("/api/")) {
+			const { username, password } = options.credentials;
+			const expected = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+			if (request.headers.authorization !== expected) {
+				response.writeHead(401, { "WWW-Authenticate": 'Basic realm="Alpaca"' });
+				response.end();
+				return;
+			}
+		}
 
 		const clientTransactionId = Number(findCaseless(params, "ClientTransactionID") ?? "0");
 		const send = (payload: Record<string, unknown>) => {
