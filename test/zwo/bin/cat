@@ -1,0 +1,7 @@
+#!/bin/sh
+# The server decides it is on a Seestar by reading the device-tree model, which a container lacks.
+if [ "$1" = "/proc/device-tree/model" ] && [ "$#" -eq 1 ]; then
+	printf 'ZWO SeeStar'
+	exit 0
+fi
+exec /bin/cat "$@"
