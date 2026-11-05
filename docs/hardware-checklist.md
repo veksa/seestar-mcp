@@ -31,9 +31,12 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
       does at the end of a goto
 - [x] `telescope_park` closes the arm; `telescope_status` reports `parked: yes` afterwards. It takes
       about 20 s. Unlike an arm closed at power-on, a parked arm reports `parked: yes`
-- [ ] Focuser: `alpaca_put` `connected` on `device_type: "focuser"`, then `alpaca_get_property`
-      `position` gives a plausible number
-- [ ] Filter wheel: `alpaca_put` `position` on `device_type: "filterwheel"` moves the wheel (listen)
+- [x] Focuser: `alpaca_put` `connected` on `device_type: "focuser"`, then `alpaca_get_property`
+      `position` gives a plausible number. On the S50 Pro the telephoto focuser (device 0) read
+      1140 of 2600 steps with a temperature, the wide-angle one (device 1) 320 of 1023 with
+      temperature 0; neither implements `stepsize`
+- [x] Filter wheel: `alpaca_put` `position` on `device_type: "filterwheel"` moves the wheel (listen).
+      Names are `Dark`, `IR`, `LP` (positions 0–2); `position` reads -1 while the wheel turns
 - [ ] `seestar_state` refuses with directions rather than an "action not implemented" error
 - [ ] With the server and the Seestar app both connected, the app still controls the scope — it is
       the way out if the Alpaca server stops answering (see "If the built-in server stops
