@@ -225,8 +225,10 @@ On the built-in server, reach the camera, focuser and filter wheel with `alpaca_
 and focuser are device `1`). Select the device with `device_connect` first: a camera answers almost
 nothing until it is connected.
 
-A session on the built-in server needs no unpark: with the arm closed, `telescope_goto` unfolds it
-and slews. Tracking turns on by itself when the slew ends.
+Right after power-on the built-in server does not count the closed arm as parked, so the first
+`telescope_goto` needs no unpark: it unfolds the arm and slews. After `telescope_park` the server
+does report the telescope as parked, so run `telescope_unpark` before the next goto. Tracking turns
+on by itself when a goto ends or is aborted.
 
 ## Without a telescope
 

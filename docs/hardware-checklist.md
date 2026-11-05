@@ -27,8 +27,10 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
       so this decides how a session has to start. **Result (S50 Pro, firmware 9.75, 2026-11-05):**
       the arm unfolds and the goto completes with no unpark first; the server turns tracking on by
       itself when the slew ends
-- [ ] `telescope_abort` mid-slew stops the mount
-- [ ] `telescope_park` closes the arm; `telescope_status` reports `parked: yes` afterwards
+- [x] `telescope_abort` mid-slew stops the mount. The server turns tracking on afterwards, as it
+      does at the end of a goto
+- [x] `telescope_park` closes the arm; `telescope_status` reports `parked: yes` afterwards. It takes
+      about 20 s. Unlike an arm closed at power-on, a parked arm reports `parked: yes`
 - [ ] Focuser: `alpaca_put` `connected` on `device_type: "focuser"`, then `alpaca_get_property`
       `position` gives a plausible number
 - [ ] Filter wheel: `alpaca_put` `position` on `device_type: "filterwheel"` moves the wheel (listen)
