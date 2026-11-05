@@ -91,6 +91,7 @@ export function registerGenericTools(server: McpServer, session: Session): void 
 					}
 				}
 
+				if (!isStop(method, parsed)) await session.beforeMovement();
 				const device = target(device_type, device_number);
 				const value = await device.put<unknown>(method, parsed);
 				return textResult(
@@ -110,4 +111,13 @@ function format(value: unknown): string {
 	if (value === null || value === undefined) return "null";
 	if (typeof value === "object") return JSON.stringify(value, null, 2);
 	return String(value);
+}
+
+/** Writes that stop something or only change the connection: never held back by the liveness check. */
+const STOPS = new Set(["abortslew", "halt", "abortexposure", "stopexposure", "connected"]);
+
+function isStop(method: string, params: AlpacaParams): boolean {
+	const name = method.toLowerCase();
+	if (STOPS.has(name)) return true;
+	return name === "moveaxis" && Number(params.Rate) === 0;
 }

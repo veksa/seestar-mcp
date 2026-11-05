@@ -60,7 +60,7 @@ export function explain(error: unknown): string {
 	if (error instanceof AlpacaTransportError) {
 		const where = error.context.url ? ` (${new URL(error.context.url).host})` : "";
 		return error.timedOut
-			? `The Alpaca server did not answer in time${where}. It may be busy plate-solving; try again, or raise --timeout.`
+			? `The Alpaca server did not answer in time${where}. It may be busy plate-solving; try again, or raise --timeout. If it keeps happening on a Seestar's built-in server, that server may have lost its link to the firmware: stop or park with the Seestar app, then switch the telescope off and on again.`
 			: `Could not reach the Alpaca server${where}: ${error.message}\n\nIs the Seestar (or seestar_alp) on, and is the host reachable from this machine?`;
 	}
 

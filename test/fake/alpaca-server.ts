@@ -30,6 +30,8 @@ export interface FailureSpec {
 	delayMs?: number;
 	/** How many requests this failure applies to. Defaults to 1. */
 	times?: number;
+	/** Apply only to requests whose path ends with this, letting others through untouched. */
+	path?: string;
 }
 
 export interface RecordedRequest {
@@ -107,9 +109,10 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 	const failures: FailureSpec[] = [];
 	let serverTransactionId = 0;
 
-	const takeFailure = (): FailureSpec | undefined => {
+	const takeFailure = (pathname: string): FailureSpec | undefined => {
 		const failure = failures[0];
 		if (!failure) return undefined;
+		if (failure.path && !pathname.endsWith(failure.path)) return undefined;
 		const remaining = (failure.times ?? 1) - 1;
 		if (remaining <= 0) failures.shift();
 		else failure.times = remaining;
@@ -163,7 +166,7 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 			});
 		};
 
-		const failure = takeFailure();
+		const failure = takeFailure(url.pathname);
 		if (failure) {
 			if (failure.delayMs) await delay(failure.delayMs);
 			if (failure.drop) {

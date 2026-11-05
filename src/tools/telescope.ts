@@ -9,7 +9,7 @@ import {
 	formatRightAscension,
 	formatUnavailable,
 } from "../format.js";
-import type { Session } from "../session.js";
+import { BUILTIN_RECOVERY, type Session } from "../session.js";
 import { guard, textResult } from "./result.js";
 
 const raSchema = z.number().min(0).max(24).describe("Right ascension in HOURS (0-24), not degrees");
@@ -51,9 +51,20 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 				const status = await session.telescope().status();
 				// A disconnected device answers a handful of properties and refuses the rest, which
 				// reads like a broken telescope unless we say what it actually means.
-				const hint = status.connected
-					? ""
-					: "\n\nThe device is not connected — run device_connect.";
+				let hint = status.connected ? "" : "\n\nThe device is not connected — run device_connect.";
+
+				// A built-in server that has lost the firmware still answers from what it remembers
+				// (altitude, azimuth, park flag), so the readings that did come back cannot be trusted.
+				// By then it may not even answer its own name, so this does not ask which driver it is.
+				const timedOut = Object.values(status.unavailable).some((reason) =>
+					reason.includes("timed out"),
+				);
+				if (timedOut) {
+					hint +=
+						"\n\nWarning: some readings timed out, so the values above may be out of date. Do " +
+						"not start a movement. On a Seestar's built-in Alpaca server this means the server " +
+						`has lost its link to the firmware.\n\n${BUILTIN_RECOVERY}`;
+				}
 				return textResult(`${renderStatus(status)}${hint}`, toStructuredStatus(status));
 			}),
 	);
@@ -81,6 +92,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async ({ ra, dec, wait, timeout_s }) =>
 			guard(async () => {
+				await session.beforeMovement();
 				const telescope = session.telescope();
 				await telescope.slewToCoordinates(ra, dec);
 
@@ -117,6 +129,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async ({ ra, dec }) =>
 			guard(async () => {
+				await session.beforeMovement();
 				await session.telescope().syncToCoordinates(ra, dec);
 				return textResult(
 					`Synced to RA ${formatRightAscension(ra)}  Dec ${formatDeclination(dec)}.`,
@@ -151,6 +164,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async () =>
 			guard(async () => {
+				await session.beforeMovement();
 				await session.telescope().park();
 				return textResult(
 					"Parking. Tracking is off.\n\nPoll telescope_status until parked is true; " +
@@ -168,6 +182,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async () =>
 			guard(async () => {
+				await session.beforeMovement();
 				await session.telescope().unpark();
 				return textResult("Unparked.");
 			}),
@@ -182,6 +197,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async () =>
 			guard(async () => {
+				await session.beforeMovement();
 				await session.telescope().findHome();
 				return textResult("Homing. Poll telescope_status until at_home is true.");
 			}),
@@ -198,6 +214,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async ({ enabled }) =>
 			guard(async () => {
+				await session.beforeMovement();
 				await session.telescope().setTracking(enabled);
 				return textResult(`Tracking ${enabled ? "on" : "off"}.`, { tracking: enabled });
 			}),
@@ -223,6 +240,7 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		},
 		async ({ action, parameters }) =>
 			guard(async () => {
+				await session.beforeMovement();
 				const result = await session.device().action(action, parameters ?? "");
 				return textResult(
 					`${action} returned:\n${typeof result === "string" ? result : JSON.stringify(result, null, 2)}`,

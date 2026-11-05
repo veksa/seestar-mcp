@@ -164,6 +164,40 @@ describe("device_connect", () => {
 	});
 });
 
+describe("a built-in server that has lost its firmware", () => {
+	const builtin = { builtin: true, identity: { name: "Seestar S50_1a2b3c4d Telescope" } };
+
+	it("refuses to start a movement it could not follow", async () => {
+		harness = await startHarness({}, builtin);
+		await connect();
+		harness.fake.sim.unpark();
+		// The liveness read never comes back in time, as when the firmware link is gone.
+		harness.fake.failNext({ delayMs: 3_000, path: "/telescope/0/slewing" });
+
+		const result = await harness.client.callTool({
+			name: "telescope_goto",
+			arguments: { ra: 10, dec: 20 },
+		});
+
+		expect(isError(result)).toBe(true);
+		expect(textOf(result)).toContain("nothing was sent");
+		expect(textOf(result)).toContain("Seestar app");
+		expect(harness.fake.requests.some((r) => r.path.endsWith("/slewtocoordinatesasync"))).toBe(
+			false,
+		);
+	});
+
+	it("still sends an abort", async () => {
+		harness = await startHarness({}, builtin);
+		await connect();
+		harness.fake.failNext({ delayMs: 3_000, path: "/telescope/0/slewing" });
+
+		await harness.client.callTool({ name: "telescope_abort", arguments: {} });
+
+		expect(harness.fake.requests.some((r) => r.path.endsWith("/abortslew"))).toBe(true);
+	});
+});
+
 describe("a password-protected server", () => {
 	const credentials = { username: "User", password: "s3cret" };
 

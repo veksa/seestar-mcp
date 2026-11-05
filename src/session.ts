@@ -1,7 +1,7 @@
 import { AlpacaClient, type DeviceType } from "./alpaca/client.js";
 import { AlpacaDevice } from "./alpaca/device.js";
 import { Telescope } from "./alpaca/devices/telescope.js";
-import { AlpacaDeviceError, AscomErrorCode } from "./alpaca/errors.js";
+import { AlpacaDeviceError, AlpacaTransportError, AscomErrorCode } from "./alpaca/errors.js";
 import type { ServerConfig } from "./config.js";
 import { SeestarActions } from "./seestar/actions.js";
 import { SeestarDevice } from "./seestar/device.js";
@@ -17,6 +17,28 @@ export class SessionError extends Error {}
  * - `generic`: any other Alpaca device.
  */
 export type DriverKind = "builtin" | "seestar_alp" | "generic";
+
+/**
+ * What to do when the built-in server has lost its link to the firmware.
+ *
+ * Seen on the test stand: one firmware reply in a shape the server does not expect ends its receive
+ * loop, and from then on every request that needs the firmware — position, slewing, abort, park —
+ * waits forever, while the server itself still answers. Only a restart brings it back.
+ */
+export const BUILTIN_RECOVERY =
+	"The mount is not at risk meanwhile — a goto stops at its target, and a manual axis move stops " +
+	"on its own within 3 seconds.\n\n" +
+	"To recover: stop or park with the Seestar app, which talks to the firmware directly. Then " +
+	"switch the telescope off and on again, which restarts its Alpaca server, and run " +
+	"device_connect.";
+
+export const UNRESPONSIVE =
+	"The telescope did not answer a status read in time, so nothing was sent: a movement started " +
+	"now could neither be watched nor stopped through Alpaca. On a Seestar's built-in Alpaca " +
+	`server this means the server has lost its link to the firmware.\n\n${BUILTIN_RECOVERY}`;
+
+/** How long the pre-movement check waits for the firmware before calling it unresponsive. */
+const LIVENESS_TIMEOUT_MS = 5_000;
 
 /** Why a seestar_* tool cannot run, for each kind of driver that lacks the action layer. */
 const NO_ACTION_LAYER: Record<Exclude<DriverKind, "seestar_alp">, string> = {
@@ -133,6 +155,48 @@ export class Session {
 		return new SeestarDevice(new SeestarActions(this.device(), () => this.requireActionLayer()));
 	}
 
+	/**
+	 * Call before anything that moves the telescope.
+	 *
+	 * On the built-in server a command is written to the firmware even when the server has stopped
+	 * hearing back from it, so the movement would start and then be impossible to follow or stop
+	 * through Alpaca. A quick read that needs the firmware proves the link is alive first. Aborting
+	 * is never gated: a stop that might not arrive is still better than none.
+	 *
+	 * Only seestar_alp is exempt. A deaf built-in server soon stops answering even its own name, and
+	 * then looks like a generic device — so "generic" gets the same check rather than a free pass.
+	 */
+	async beforeMovement(): Promise<void> {
+		const kind = await this.driver();
+		if (kind === "seestar_alp") return;
+
+		const target = this.requireTarget();
+		// The built-in server shares one firmware link between its devices, and the mount is
+		// device 0. Elsewhere, only a telescope has a slewing state worth asking about.
+		const probe =
+			kind === "builtin"
+				? { number: 0 }
+				: target.deviceType === "telescope"
+					? { number: target.deviceNumber }
+					: undefined;
+		if (!probe) return;
+
+		try {
+			await this.client(target.host, target.port).get(
+				"telescope",
+				probe.number,
+				"slewing",
+				{},
+				{ timeoutMs: Math.min(this.config.timeoutMs, LIVENESS_TIMEOUT_MS), retries: 0 },
+			);
+		} catch (error) {
+			if (error instanceof AlpacaTransportError && error.timedOut) {
+				throw new SessionError(UNRESPONSIVE);
+			}
+			// Anything else (not connected, parked…) is for the movement itself to report.
+		}
+	}
+
 	private async requireActionLayer(): Promise<void> {
 		const kind = await this.driver();
 		if (kind !== "seestar_alp") throw new SessionError(NO_ACTION_LAYER[kind]);
@@ -192,11 +256,22 @@ export class Session {
 		if (cached !== undefined) return cached;
 
 		const device = this.device();
+		let answered = false;
+		const read = (property: Promise<string>) =>
+			property.then(
+				(value) => {
+					answered = true;
+					return value;
+				},
+				() => "",
+			);
 		const [description, driverInfo, name] = await Promise.all([
-			device.description().catch(() => ""),
-			device.driverInfo().catch(() => ""),
-			device.name().catch(() => ""),
+			read(device.description()),
+			read(device.driverInfo()),
+			read(device.name()),
 		]);
+		// Nothing came back: not knowing is not the same as "not a Seestar", so do not remember it.
+		if (!answered) return "generic";
 
 		// Only "seestar": seestar_alp calls itself "Alpaca Driver for Seestar S50 Smart Telescope" and
 		// the built-in server "Seestar <ssid> Telescope", while matching "alp" would also catch every
