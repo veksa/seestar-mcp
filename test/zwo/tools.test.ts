@@ -93,6 +93,45 @@ describe.skipIf(skip)("built-in server, default settings", () => {
 	});
 });
 
+describe.skipIf(skip)("built-in server that has lost its firmware", () => {
+	let stand: Stand;
+	let client: Client;
+
+	beforeAll(async () => {
+		stand = await startStand();
+		client = await connectClient({ host: stand.host, port: stand.port, timeoutMs: 3_000 });
+		await client.callTool({ name: "device_connect", arguments: {} });
+	}, 600_000);
+
+	afterAll(async () => {
+		await client?.close();
+		await stand?.close();
+	});
+
+	it("goes deaf after one reply it cannot parse, and the status says so", async () => {
+		await stand.breakFirmware("scope_get_ra_dec");
+
+		await client.callTool({ name: "telescope_status", arguments: {} });
+		const again = await client.callTool({ name: "telescope_status", arguments: {} });
+
+		// Still answering — from memory — which is exactly why it has to be flagged.
+		expect(textOf(again)).toContain("timed out");
+		expect(textOf(again)).toContain("may be out of date");
+		expect(textOf(again)).toContain("Seestar app");
+	});
+
+	it("refuses to start a goto, and the firmware never sees one", async () => {
+		const result = await client.callTool({
+			name: "telescope_goto",
+			arguments: { ra: 3, dec: 40 },
+		});
+
+		expect(isError(result)).toBe(true);
+		expect(textOf(result)).toContain("nothing was sent");
+		expect(await stand.firmwareCalls()).not.toContain("scope_goto");
+	});
+});
+
 describe.skipIf(skip)("built-in server with a password", () => {
 	let stand: Stand;
 

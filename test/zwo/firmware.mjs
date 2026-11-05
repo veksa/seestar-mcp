@@ -234,6 +234,8 @@ function handle(method, params) {
 }
 
 const sockets = new Set();
+/** Methods whose next answer is deliberately malformed. */
+const malformed = new Set();
 
 function send(socket, message) {
 	socket.write(`${JSON.stringify(message)}\r\n`);
@@ -247,6 +249,11 @@ function broadcast(event) {
 function extra(method, params) {
 	if (method === "fake_set_state") {
 		Object.assign(state, params);
+		return { result: 0 };
+	}
+	// Answer the next call of a method with a result of the wrong shape, as a firmware update might.
+	if (method === "fake_malform") {
+		malformed.add(String(params?.method));
 		return { result: 0 };
 	}
 	return undefined;
@@ -275,14 +282,20 @@ const server = createServer((socket) => {
 
 			const answer =
 				extra(request.method, request.params) ?? handle(request.method, request.params);
-			const reply = {
-				jsonrpc: "2.0",
-				Timestamp: now(),
-				method: request.method,
-				...(answer.error ? { error: answer.error, code: 103 } : { result: answer.result, code: 0 }),
-				...answer.extra,
-				id: request.id,
-			};
+			const broken = malformed.delete(request.method);
+			const reply = broken
+				? // No "code" and a result of the wrong type: every parser on the other side trips on it.
+					{ jsonrpc: "2.0", Timestamp: now(), method: request.method, result: "?", id: request.id }
+				: {
+						jsonrpc: "2.0",
+						Timestamp: now(),
+						method: request.method,
+						...(answer.error
+							? { error: answer.error, code: 103 }
+							: { result: answer.result, code: 0 }),
+						...answer.extra,
+						id: request.id,
+					};
 			if (process.env.FAKE_FIRMWARE_LOG)
 				process.stderr.write(`4700 <- ${line}\n4700 -> ${JSON.stringify(reply)}\n`);
 			send(socket, reply);

@@ -22,6 +22,13 @@ const IMAGE = "seestar-mcp-zwo-stand";
 export interface Stand {
 	host: string;
 	port: number;
+	/**
+	 * Make the firmware answer the next call of `method` in a shape the server cannot parse. On the
+	 * real server that ends its receive loop: it stops hearing the firmware until restarted.
+	 */
+	breakFirmware(method: string): Promise<void>;
+	/** The firmware methods the server has sent so far, in order. */
+	firmwareCalls(): Promise<string[]>;
 	close(): Promise<void>;
 }
 
@@ -82,6 +89,8 @@ export async function startStand(options: StandOptions = {}): Promise<Stand> {
 		`${dir}:/seestar-alpaca:ro`,
 		"-e",
 		"FAKE_SLEW_MS=1000",
+		"-e",
+		"FAKE_FIRMWARE_LOG=1",
 	];
 	if (options.password) args.push("-e", `ALPACA_PASSWORD=${options.password}`);
 	args.push(IMAGE);
@@ -97,7 +106,27 @@ export async function startStand(options: StandOptions = {}): Promise<Stand> {
 		const { stdout: mapping } = await run("docker", ["port", id, "32323/tcp"]);
 		const port = Number(mapping.trim().split("\n")[0]?.split(":").pop());
 		await waitForDevices(port, id);
-		return { host: "127.0.0.1", port, close };
+		return {
+			host: "127.0.0.1",
+			port,
+			close,
+			async breakFirmware(method: string) {
+				const message = JSON.stringify({ id: 9, method: "fake_malform", params: { method } });
+				const script =
+					"const s=require('net').connect(4700,'127.0.0.1',()=>{" +
+					`s.write(${JSON.stringify(`${message}\n`)});setTimeout(()=>process.exit(0),200)})`;
+				await run("docker", ["exec", id, "node", "-e", script], { timeout: 30_000 });
+			},
+			async firmwareCalls() {
+				const { stderr, stdout } = await run("docker", ["logs", id], {
+					maxBuffer: 64 * 1024 * 1024,
+				});
+				return `${stdout}${stderr}`
+					.split("\n")
+					.filter((line) => line.startsWith("4700 <- "))
+					.map((line) => /"method"\s*:\s*"([^"]+)"/.exec(line)?.[1] ?? "?");
+			},
+		};
 	} catch (error) {
 		await close();
 		throw error;
