@@ -6,7 +6,7 @@
 [![node](https://img.shields.io/node/v/seestar-mcp.svg)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-MCP server for ZWO Seestar telescopes (S50 / S50 Pro / S30) over [ASCOM Alpaca](https://ascom-standards.org/).
+MCP server for ZWO Seestar telescopes (S50, S50 Pro, S30, S30 Pro) over [ASCOM Alpaca](https://ascom-standards.org/).
 
 Point your telescope at a target, image it, then stack and process what it captured — from Claude
 Code, Claude Desktop, or any other MCP host.
@@ -18,36 +18,44 @@ Two servers ship in this package:
   flatten the background, denoise, stretch, export.
 
 ```
-you → Claude ─┬→ seestar-mcp → seestar_alp → Seestar
-              │       MCP        Alpaca/HTTP    TCP
+you → Claude ─┬→ seestar-mcp ─→ Seestar (built-in Alpaca server)
+              │       MCP     └→ seestar_alp → Seestar     (optional, for the seestar_* tools)
               └→ astro-mcp   → Siril, GraXpert → PNG
 ```
 
 They meet at a directory of files, not in code, so you can run either on its own. The processing
 side is documented in [`docs/processing.md`](docs/processing.md).
 
-[`seestar_alp`](https://github.com/smart-underworld/seestar_alp) is the driver that speaks the
-telescope's own protocol. It can run anywhere on your network; this server only needs HTTP access to
-it (default port `5555`).
+Current Seestar firmware runs an Alpaca server on the telescope itself (port `32323`). That is all
+this server needs for the standard ASCOM devices: the mount, the camera, the focuser, the filter
+wheel and the dew heater switch. It is the default.
+
+The Seestar-specific tools — plate-solved goto, stacking, mosaics, the scheduler, downloads — need
+[`seestar_alp`](https://github.com/smart-underworld/seestar_alp), a community driver that speaks the
+telescope's own protocol. It runs anywhere on your network (default port `5555`). Whether it can
+still reach the newest firmware has not been checked.
 
 The Alpaca core is generic, so the standard telescope tools also work against any other Alpaca
 device — including the [ASCOM simulators](https://github.com/ASCOMInitiative/ASCOM.Alpaca.Simulators),
 which is how you can try this without a telescope.
 
-> **Status: early development.** The tools work and are tested, but nothing here has been run
-> against real hardware yet. Expect rough edges under the stars.
+> **Status: early development.** The tools work and are tested — against ZWO's own built-in Alpaca
+> server running on a fake firmware, against the ASCOM simulators, and against a fake of
+> `seestar_alp` — but nothing here has been run against a real telescope yet. Expect rough edges
+> under the stars.
 
 ## Requirements
 
 - Node.js 20 or newer
-- A running `seestar_alp` instance (or any ASCOM Alpaca device, for the generic tools)
+- A Seestar on current firmware, on the same network as this machine — or a running `seestar_alp`,
+  or any other ASCOM Alpaca device for the generic tools
 
 ## Install
 
 Claude Code:
 
 ```sh
-claude mcp add seestar -- npx -y seestar-mcp --host seestar.local
+claude mcp add seestar -- npx -y seestar-mcp --host <telescope address>
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
@@ -57,15 +65,18 @@ Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "seestar": {
       "command": "npx",
-      "args": ["-y", "seestar-mcp", "--host", "seestar.local"]
+      "args": ["-y", "seestar-mcp", "--host", "<telescope address>"]
     }
   }
 }
 ```
 
-Replace `seestar.local` with the address of the machine running `seestar_alp`. Don't know it? Leave
-`--host` out and ask the model to run `alpaca_discover` — it will broadcast on the local network and
-list what answers.
+Replace `<telescope address>` with the telescope's IP address. Don't know it? Leave `--host` out and
+ask the model to run `alpaca_discover` — it will broadcast on the local network and list what
+answers.
+
+To go through `seestar_alp` instead, point `--host` at the machine running it and add
+`--port 5555 --device 1`.
 
 ## Options
 
@@ -74,8 +85,8 @@ Every option can be given as a flag or an environment variable.
 | Flag | Environment | Default | What it does |
 |---|---|---|---|
 | `--host <address>` | `SEESTAR_HOST` | — | Address of the Alpaca server |
-| `--port <number>` | `SEESTAR_PORT` | `5555` | Alpaca port |
-| `--device <number>` | `SEESTAR_DEVICE` | `1` | Device number — see the warning below |
+| `--port <number>` | `SEESTAR_PORT` | `32323` | Alpaca port; `seestar_alp` uses `5555` |
+| `--device <number>` | `SEESTAR_DEVICE` | `0` | Device number — see the warning below |
 | `--device-type <type>` | `SEESTAR_DEVICE_TYPE` | `telescope` | Any Alpaca device type |
 | `--timeout <ms>` | `SEESTAR_TIMEOUT_MS` | `10000` | Per-request timeout |
 | `--profile <name>` | `SEESTAR_PROFILE` | `auto` | `auto`, `seestar`, or `generic` |
@@ -83,12 +94,18 @@ Every option can be given as a flag or an environment variable.
 | `--allow-destructive` | `SEESTAR_ALLOW_DESTRUCTIVE` | off | Allow shutdown and reboot |
 | `--no-raw` | `SEESTAR_ALLOW_RAW=0` | raw on | Hide the raw firmware passthrough |
 | `--client-id <number>` | `SEESTAR_CLIENT_ID` | random | Fixed Alpaca ClientID |
+| `--username <name>` | `SEESTAR_USERNAME` | `User` | User for a password-protected server |
+| `--password <secret>` | `SEESTAR_PASSWORD` | — | Password, if the server has "Require Authorization" on |
 
-> **Device numbers start at 1.** On `seestar_alp`, device `0` is the "federation" — a command sent
-> to it goes to *every* telescope it manages. Your first scope is device `1`.
+> **Device numbers depend on the driver.** The built-in server numbers every device `0`. On
+> `seestar_alp`, device `0` is the "federation" — a command sent to it goes to *every* telescope it
+> manages — and your first scope is device `1`. `device_connect` warns if it finds itself on the
+> federation.
 
-`--profile auto` decides whether the Seestar tools apply by looking at how the driver describes
-itself when you connect. Force it with `seestar` or `generic` if the guess is wrong.
+`--profile auto` works out which driver it is talking to when you connect: the built-in server,
+`seestar_alp`, or some other Alpaca device. The `seestar_*`, `imaging_*` and `schedule_*` tools run
+only on `seestar_alp`; elsewhere they say what to use instead. Force the choice with `seestar` or
+`generic` if the guess is wrong.
 
 ## Tools
 
@@ -105,24 +122,24 @@ itself when you connect. Force it with `seestar` or `generic` if the guess is wr
 
 `alpaca_get_property` · `alpaca_put`
 
-**Seestar**
+**Seestar** — need `seestar_alp`
 
 `seestar_state` (battery, storage, firmware) · `seestar_events` (progress of everything slow) ·
 `seestar_view_state` · `seestar_settings` · `seestar_set_settings` · `seestar_startup` ·
 `seestar_goto_target` (plate-solved, centred) · `seestar_stop_goto` · `seestar_autofocus` ·
 `seestar_filter_wheel` · `seestar_dew_heater` · `seestar_raw` · `seestar_power`
 
-**Imaging**
+**Imaging** — need `seestar_alp`
 
 `imaging_start` (single target or mosaic) · `imaging_start_stack` · `imaging_stop` ·
 `imaging_solve` · `imaging_last_image`
 
-**Scheduler** — plan a night and let the telescope run it
+**Scheduler** — plan a night and let the telescope run it; needs `seestar_alp`
 
 `schedule_get` · `schedule_create` · `schedule_add_item` · `schedule_remove_item` ·
 `schedule_control`
 
-**Files** — get what was captured onto this computer
+**Files** — get what was captured onto this computer; needs `seestar_alp`
 
 `imaging_albums` · `imaging_download`
 
@@ -132,7 +149,7 @@ itself when you connect. Force it with `seestar` or `generic` if the guess is wr
 `astro_background_extract` · `astro_denoise` · `astro_deconvolve` · `astro_color_calibrate` ·
 `astro_stretch` · `astro_remove_stars` · `astro_export` · `astro_run_script` · `astro_job`
 
-### A session, roughly
+### A session through `seestar_alp`, roughly
 
 1. `seestar_startup` — unfold and calibrate; watch the `Initialise` event
 2. `seestar_state` — is there enough battery and disk for the night?
@@ -161,6 +178,9 @@ to be installed for each.
   `confirm: true` in the call. A telescope that has been shut down cannot be woken remotely.
 - `seestar_raw` and `alpaca_put` have no guard rails by design. `--no-raw` hides the firmware one.
 
+On the built-in server, reach the camera, focuser, filter wheel and dew heater switch with
+`alpaca_get_property` and `alpaca_put` (`device_type: "focuser"` and so on, all device `0`).
+
 ## Without a telescope
 
 ```sh
@@ -179,6 +199,7 @@ yarn install
 yarn test          # unit + integration against the built-in fakes
 yarn test:sim      # downloads the ASCOM simulators and tests against them
 yarn test:siril    # downloads Siril and runs the processing pipeline for real
+yarn test:zwo      # runs the tools against the Seestar's built-in Alpaca server, in Docker
 yarn typecheck
 yarn lint
 ```
@@ -191,6 +212,11 @@ The second suite runs the same client against the
 [ASCOM Alpaca Simulators](https://github.com/ASCOMInitiative/ASCOM.Alpaca.Simulators), the reference
 implementation of the specification. The binaries are self-contained (no .NET runtime needed) and
 are cached in `.cache/`.
+
+The third suite runs ZWO's own Alpaca server in a container, with only the firmware under it faked
+(`test/zwo/firmware.mjs`). The server is closed source and not part of this repository: it needs
+Docker and a copy of the telescope's `/etc/zwo/Alpaca`, in `.cache/seestar-alpaca` or wherever
+`SEESTAR_ALPACA_DIR` points. Without them the suite skips.
 
 Before pointing this at real hardware, work through [`docs/hardware-checklist.md`](docs/hardware-checklist.md).
 

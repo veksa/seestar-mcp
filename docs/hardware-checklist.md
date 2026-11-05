@@ -6,6 +6,35 @@ scope in front of you, ready to stop it by hand.
 
 Do it in daylight up to step 6 if you can: the mount moves, and you want to see it move.
 
+## Part A — the built-in Alpaca server
+
+Current firmware serves Alpaca from the telescope itself. The test stand (`yarn test:zwo`) runs
+ZWO's own server, so what is unproven here is the firmware underneath it.
+
+- [ ] The Seestar is powered, awake and on the same network; note its IP address
+- [ ] `alpaca_discover` finds it on port **32323**, listing camera, focuser, filter wheel, telescope
+      and switch — all device **0**
+- [ ] If the server's settings page has "Require Authorization" on, `device_connect` without
+      `--password` says so; with `--password` it connects
+- [ ] `device_connect` (no arguments) reports `driver_kind: builtin`
+- [ ] `telescope_status` reports coordinates that are not obviously wrong for your sky
+- [ ] `telescope_set_tracking` on/off is reflected in `telescope_status`
+- [ ] **With the arm closed**, `telescope_goto` to a target well above the horizon: does the arm
+      unfold, or does the goto fail with "fail to operate"? The server's `Unpark` only clears a flag,
+      so this decides how a session has to start. Write down what happened.
+- [ ] `telescope_abort` mid-slew stops the mount
+- [ ] `telescope_park` closes the arm; `telescope_status` reports `parked: yes` afterwards
+- [ ] Focuser: `alpaca_put` `connected` on `device_type: "focuser"`, then `alpaca_get_property`
+      `position` gives a plausible number
+- [ ] Filter wheel: `alpaca_put` `position` on `device_type: "filterwheel"` moves the wheel (listen)
+- [ ] `seestar_state` refuses with directions rather than an "action not implemented" error
+
+## Part B — `seestar_alp`
+
+The rest of this list is for the `seestar_alp` path, which the `seestar_*`, `imaging_*` and
+`schedule_*` tools need. Whether `seestar_alp` can reach current firmware at all is itself the first
+thing to find out.
+
 ## Before you start
 
 - [ ] `seestar_alp` is running and its web UI answers on `http://<host>:5432`
@@ -16,7 +45,7 @@ Do it in daylight up to step 6 if you can: the mount moves, and you want to see 
 Start the server pointed at the driver:
 
 ```sh
-npx -y seestar-mcp --host <host> --device 1
+npx -y seestar-mcp --host <host> --port 5555 --device 1
 ```
 
 ## 1. Discovery and connection
