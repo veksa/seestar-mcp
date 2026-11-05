@@ -308,7 +308,7 @@ function toStructuredServer(found: {
 
 const DRIVER_SUMMARY: Record<DriverKind, string> = {
 	builtin:
-		"yes — the Seestar's built-in Alpaca server: telescope_* for the mount, alpaca_* for the rest",
+		"yes — the Seestar's built-in Alpaca server: telescope_* for the mount, telescope_center and camera_capture for plate-solved goto and frames, alpaca_* for the rest",
 	seestar_alp: "yes — seestar_alp: the seestar_* tools apply",
 	generic: "no — generic Alpaca device",
 };

@@ -7,8 +7,12 @@ import {
 import { SeestarError } from "../seestar/actions.js";
 import { SessionError } from "../session.js";
 
+export type ToolContent =
+	| { type: "text"; text: string }
+	| { type: "image"; data: string; mimeType: string };
+
 export interface ToolResult {
-	content: Array<{ type: "text"; text: string }>;
+	content: ToolContent[];
 	structuredContent?: Record<string, unknown>;
 	isError?: boolean;
 	[key: string]: unknown;

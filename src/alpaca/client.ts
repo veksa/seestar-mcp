@@ -4,6 +4,12 @@ import {
 	type AlpacaRequestContext,
 	AlpacaTransportError,
 } from "./errors.js";
+import {
+	type AlpacaImage,
+	decodeImageBytes,
+	decodeImageJson,
+	ImageDecodeError,
+} from "./imagebytes.js";
 
 /** Every device type in the Alpaca specification. */
 export const DEVICE_TYPES = [
@@ -224,21 +230,97 @@ export class AlpacaClient {
 		throw lastError;
 	}
 
-	private async attempt<T>(
+	/**
+	 * Download a camera image, as ImageBytes when the server offers it and as JSON otherwise.
+	 *
+	 * Never retried: a frame is large, and a server that failed to send one is better asked again by
+	 * the caller, who knows whether the exposure is still worth having.
+	 */
+	async getImage(
+		deviceType: DeviceType,
+		deviceNumber: number,
+		method = "imagearray",
+		options: RequestOptions = {},
+	): Promise<AlpacaImage> {
+		const url = new URL(this.deviceUrl(deviceType, deviceNumber, method));
+		url.searchParams.set("ClientID", String(this.clientId));
+		url.searchParams.set("ClientTransactionID", String(this.nextTransactionId()));
+		const context: AlpacaRequestContext = {
+			deviceType,
+			deviceNumber,
+			method,
+			url: url.toString(),
+		};
+
+		const timeoutMs = options.timeoutMs ?? this.timeoutMs;
+		const timeoutSignal = AbortSignal.timeout(timeoutMs);
+		const response = await this.send(
+			url.toString(),
+			{
+				method: "GET",
+				headers: { Accept: "application/imagebytes, application/json;q=0.5" },
+			},
+			context,
+			timeoutSignal,
+			timeoutMs,
+			options,
+		);
+
+		let body: Uint8Array;
+		try {
+			body = new Uint8Array(await response.arrayBuffer());
+		} catch (error) {
+			throw new AlpacaTransportError(
+				timeoutSignal.aborted
+					? `image download timed out after ${timeoutMs}ms`
+					: `image download failed: ${describe(error)}`,
+				context,
+				{ cause: error, timedOut: timeoutSignal.aborted },
+			);
+		}
+
+		if (!response.ok) {
+			throw new AlpacaHttpError(response.status, new TextDecoder().decode(body), context);
+		}
+
+		if ((response.headers.get("content-type") ?? "").includes("imagebytes")) {
+			try {
+				return decodeImageBytes(body);
+			} catch (error) {
+				if (error instanceof ImageDecodeError && error.errorNumber !== undefined) {
+					throw new AlpacaDeviceError(error.errorNumber, error.message, context);
+				}
+				throw new AlpacaTransportError(`could not decode the image: ${describe(error)}`, context, {
+					cause: error,
+				});
+			}
+		}
+
+		const value = this.unwrap<unknown>(new TextDecoder().decode(body), context);
+		try {
+			return decodeImageJson(value);
+		} catch (error) {
+			throw new AlpacaTransportError(`could not decode the image: ${describe(error)}`, context, {
+				cause: error,
+			});
+		}
+	}
+
+	/** One HTTP exchange, with the timeout and credentials every request needs. */
+	private async send(
 		url: string,
 		init: RequestInit,
 		context: AlpacaRequestContext,
+		timeoutSignal: AbortSignal,
+		timeoutMs: number,
 		options: RequestOptions,
-	): Promise<T> {
-		const timeoutMs = options.timeoutMs ?? this.timeoutMs;
-		const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	): Promise<Response> {
 		const signal = options.signal
 			? AbortSignal.any([options.signal, timeoutSignal])
 			: timeoutSignal;
 
-		let response: Response;
 		try {
-			response = await this.fetchImpl(url, {
+			return await this.fetchImpl(url, {
 				...init,
 				signal,
 				headers: {
@@ -255,6 +337,17 @@ export class AlpacaClient {
 				{ cause: error, timedOut },
 			);
 		}
+	}
+
+	private async attempt<T>(
+		url: string,
+		init: RequestInit,
+		context: AlpacaRequestContext,
+		options: RequestOptions,
+	): Promise<T> {
+		const timeoutMs = options.timeoutMs ?? this.timeoutMs;
+		const timeoutSignal = AbortSignal.timeout(timeoutMs);
+		const response = await this.send(url, init, context, timeoutSignal, timeoutMs, options);
 
 		const text = await response.text();
 
@@ -262,6 +355,11 @@ export class AlpacaClient {
 			throw new AlpacaHttpError(response.status, text, context);
 		}
 
+		return this.unwrap<T>(text, context);
+	}
+
+	/** Parse an Alpaca JSON envelope, turning a non-zero ErrorNumber into an exception. */
+	private unwrap<T>(text: string, context: AlpacaRequestContext): T {
 		let payload: AlpacaResponse<T>;
 		try {
 			payload = JSON.parse(text) as AlpacaResponse<T>;

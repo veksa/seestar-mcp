@@ -35,6 +35,14 @@ export const configSchema = z.object({
 	password: z.string().min(1).optional(),
 	/** Where downloaded frames go. Shared by convention with astro-mcp, not by code. */
 	workDir: z.string().min(1),
+	/** Where camera_capture and telescope_center keep their frames. Defaults to <workDir>/captures. */
+	captureDir: z.string().min(1).optional(),
+	/** The ASTAP plate solver; searched for on PATH and in the usual places when omitted. */
+	astapPath: z.string().min(1).optional(),
+	/** Directory holding ASTAP's star database; defaults to the directory of the binary. */
+	astapDatabase: z.string().min(1).optional(),
+	/** ASTAP catalogue to use, e.g. d05; ASTAP picks one when omitted. */
+	astapCatalog: z.string().min(1).optional(),
 });
 
 export type ServerConfig = z.infer<typeof configSchema>;
@@ -57,6 +65,10 @@ Options:
   --username <name>      User for a password-protected server, default User (env SEESTAR_USERNAME)
   --password <secret>    Password for a password-protected server (env SEESTAR_PASSWORD)
   --work-dir <path>      Where downloaded frames go (env ASTRO_WORK_DIR, default ~/astro)
+  --capture-dir <path>   Where captured frames go (env SEESTAR_CAPTURE_DIR, default <work-dir>/captures)
+  --astap <path>         ASTAP plate solver binary (env ASTAP_PATH)
+  --astap-db <path>      ASTAP star database directory (env ASTAP_DATABASE, default: next to the binary)
+  --astap-catalog <name> ASTAP catalogue, e.g. d05 (env ASTAP_CATALOG)
   -h, --help             Show this help
   -v, --version          Show the version
 
@@ -88,6 +100,10 @@ export function loadConfig(
 	fromEnv("SEESTAR_CLIENT_ID", toNumber("SEESTAR_CLIENT_ID"));
 	fromEnv("SEESTAR_USERNAME", (value) => value);
 	fromEnv("SEESTAR_PASSWORD", (value) => value);
+	fromEnv("SEESTAR_CAPTURE_DIR", (value) => value);
+	if (env.ASTAP_PATH) raw.astapPath = env.ASTAP_PATH;
+	if (env.ASTAP_DATABASE) raw.astapDatabase = env.ASTAP_DATABASE;
+	if (env.ASTAP_CATALOG) raw.astapCatalog = env.ASTAP_CATALOG;
 
 	for (let index = 0; index < argv.length; index++) {
 		const argument = argv[index] as string;
@@ -136,6 +152,18 @@ export function loadConfig(
 				break;
 			case "--work-dir":
 				raw.workDir = next();
+				break;
+			case "--capture-dir":
+				raw.captureDir = next();
+				break;
+			case "--astap":
+				raw.astapPath = next();
+				break;
+			case "--astap-db":
+				raw.astapDatabase = next();
+				break;
+			case "--astap-catalog":
+				raw.astapCatalog = next();
 				break;
 			default:
 				throw new ConfigError(`unknown option ${argument}`);

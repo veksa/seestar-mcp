@@ -1,6 +1,7 @@
 import { createSocket, type Socket } from "node:dgram";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { type AlpacaImage, encodeImageBytes } from "../../src/alpaca/imagebytes.js";
 import { SeestarSim } from "./seestar-sim.js";
 
 /**
@@ -58,6 +59,32 @@ export interface FakeAlpacaOptions {
 	builtin?: boolean;
 	/** Require HTTP Basic credentials on the device API, as "Require Authorization" does. */
 	credentials?: { username: string; password: string };
+	/** Serve a camera as well (add "camera" to deviceTypes). */
+	camera?: FakeCameraOptions;
+}
+
+/** A camera the way the Seestar's built-in server presents one. */
+export interface FakeCameraOptions {
+	width?: number;
+	height?: number;
+	/** ASCOM SensorType; 2 is RGGB. */
+	sensorType?: number;
+	bayerOffsetX?: number;
+	bayerOffsetY?: number;
+	gain?: number;
+	/** Pixel value at (x, y). Defaults to a flat 2000. */
+	pixel?: (x: number, y: number) => number;
+	/** Real milliseconds per exposure second, so tests do not wait for the sky. Default 10. */
+	msPerSecond?: number;
+	/** Answer imagearray as JSON even when ImageBytes is asked for. */
+	jsonOnly?: boolean;
+}
+
+/** What the fake camera remembers, per device number. */
+export interface FakeCameraState {
+	gain: number;
+	exposures: Array<{ duration: number; light: boolean }>;
+	readyAt: number | undefined;
 }
 
 export interface FakeAlpaca {
@@ -68,6 +95,8 @@ export interface FakeAlpaca {
 	readonly discoveryPort: number | undefined;
 	readonly sim: SeestarSim;
 	readonly requests: RecordedRequest[];
+	/** Per-device state of the fake camera, when one is served. */
+	readonly cameras: Map<number, FakeCameraState>;
 	/** Queue a failure for the next request(s). */
 	failNext(spec: FailureSpec): void;
 	/** Mark a device connected or not without going through the protocol. */
@@ -105,6 +134,7 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 		name: options.identity?.name,
 	};
 	const requests: RecordedRequest[] = [];
+	const cameras = new Map<number, FakeCameraState>();
 	const connected = new Map<number, boolean>();
 	const failures: FailureSpec[] = [];
 	let serverTransactionId = 0;
@@ -238,6 +268,23 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 			return;
 		}
 
+		if (deviceType === "camera") {
+			handleCamera({
+				options: options.camera ?? {},
+				cameras,
+				deviceNumber,
+				method,
+				httpMethod: request.method ?? "GET",
+				params,
+				accept: request.headers.accept ?? "",
+				connected,
+				send,
+				sendError,
+				response,
+			});
+			return;
+		}
+
 		if (request.method === "GET") {
 			const value = readProperty(sim, method, deviceNumber, connected, identity);
 			if (value === NOT_FOUND) {
@@ -301,6 +348,7 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 		discoveryPort,
 		sim,
 		requests,
+		cameras,
 		failNext(spec) {
 			failures.push(spec);
 		},
@@ -625,4 +673,121 @@ function respondText(response: ServerResponse, status: number, text: string): vo
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface CameraRequest {
+	options: FakeCameraOptions;
+	cameras: Map<number, FakeCameraState>;
+	deviceNumber: number;
+	method: string;
+	httpMethod: string;
+	params: Record<string, string>;
+	accept: string;
+	connected: Map<number, boolean>;
+	send: (payload: Record<string, unknown>) => void;
+	sendError: (errorNumber: number, errorMessage: string) => void;
+	response: ServerResponse;
+}
+
+function handleCamera(request: CameraRequest): void {
+	const { options, cameras, deviceNumber, method, params, send, sendError } = request;
+	const width = options.width ?? 64;
+	const height = options.height ?? 32;
+	let state = cameras.get(deviceNumber);
+	if (!state) {
+		state = { gain: options.gain ?? 0, exposures: [], readyAt: undefined };
+		cameras.set(deviceNumber, state);
+	}
+
+	if (request.httpMethod === "PUT") {
+		switch (method) {
+			case "connected":
+				request.connected.set(deviceNumber, (params.Connected ?? "").toLowerCase() === "true");
+				send({ Value: null });
+				return;
+			case "gain":
+				state.gain = Number(params.Gain);
+				send({ Value: null });
+				return;
+			case "startexposure": {
+				const duration = Number(params.Duration);
+				state.exposures.push({ duration, light: (params.Light ?? "").toLowerCase() === "true" });
+				state.readyAt = Date.now() + duration * (options.msPerSecond ?? 10);
+				send({ Value: null });
+				return;
+			}
+			case "abortexposure":
+				state.readyAt = undefined;
+				send({ Value: null });
+				return;
+			default:
+				sendError(0x400, `${method} is not implemented`);
+				return;
+		}
+	}
+
+	const imageReady = state.readyAt !== undefined && Date.now() >= state.readyAt;
+	const values: Record<string, unknown> = {
+		connected: request.connected.get(deviceNumber) ?? false,
+		name: `Fake Seestar ${deviceNumber === 0 ? "Telephoto" : "Wide Angle"} Camera`,
+		description: "Camera V3",
+		driverinfo: "Camera V3",
+		driverversion: "1.3.1-1",
+		interfaceversion: 3,
+		sensorname: "",
+		sensortype: options.sensorType ?? 2,
+		cameraxsize: width,
+		cameraysize: height,
+		pixelsizex: 2.9,
+		pixelsizey: 2.9,
+		bayeroffsetx: options.bayerOffsetX ?? 1,
+		bayeroffsety: options.bayerOffsetY ?? 0,
+		gain: state.gain,
+		gainmin: 0,
+		gainmax: 600,
+		offset: 0,
+		exposuremin: 0.00003,
+		exposuremax: 2000,
+		maxadu: 65535,
+		ccdtemperature: 25.5,
+		camerastate: state.readyAt !== undefined && !imageReady ? 2 : 0,
+		imageready: imageReady,
+	};
+
+	if (method === "imagearray") {
+		if (!imageReady) {
+			sendError(0x40b, "No image available");
+			return;
+		}
+		const pixel = options.pixel ?? (() => 2000);
+		const pixels = new Int32Array(width * height);
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) pixels[y * width + x] = pixel(x, y);
+		}
+		const image: AlpacaImage = { width, height, pixels };
+
+		if (!options.jsonOnly && request.accept.includes("application/imagebytes")) {
+			const body = encodeImageBytes(image, 8);
+			request.response.writeHead(200, {
+				"Content-Type": "application/imagebytes",
+				"Content-Length": String(body.byteLength),
+			});
+			request.response.end(Buffer.from(body));
+			return;
+		}
+		const columns: number[][] = [];
+		for (let x = 0; x < width; x++) {
+			const column: number[] = [];
+			for (let y = 0; y < height; y++) column.push(pixels[y * width + x] as number);
+			columns.push(column);
+		}
+		send({ Type: 2, Rank: 2, Value: columns });
+		return;
+	}
+
+	if (!(method in values)) {
+		sendError(0x400, `${method} is not implemented`);
+		return;
+	}
+	send({ Value: values[method] });
 }

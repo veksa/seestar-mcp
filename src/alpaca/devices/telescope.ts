@@ -153,7 +153,7 @@ export class Telescope extends AlpacaDevice {
 	}
 }
 
-async function readMany<T extends Record<string, string>>(
+export async function readMany<T extends Record<string, string>>(
 	device: AlpacaDevice,
 	properties: T,
 	options?: RequestOptions,

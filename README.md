@@ -31,8 +31,13 @@ this server needs for the standard ASCOM devices: the mount, the camera, the foc
 wheel. It is the default. It also lists a switch, but on firmware 9.75 that switch calls itself
 "Alpaca Switch Simulator", so do not expect it to control the dew heater.
 
-The Seestar-specific tools — plate-solved goto, stacking, mosaics, the scheduler, downloads — need
-[`seestar_alp`](https://github.com/smart-underworld/seestar_alp), a community driver that speaks the
+On top of the built-in server this package does the plate solving itself: `telescope_center` slews,
+takes a frame with the Alpaca camera, solves it with [ASTAP](https://hnsky.org/astap.htm) and
+corrects until the target is centred, and `camera_capture` saves frames as FITS. See
+[Frames and plate solving](#frames-and-plate-solving).
+
+The remaining Seestar-specific tools — the telescope's own stacking, mosaics, the scheduler,
+downloads — need [`seestar_alp`](https://github.com/smart-underworld/seestar_alp), a community driver that speaks the
 telescope's own protocol. It runs anywhere on your network (default port `5555`). Whether it can
 still reach the newest firmware has not been checked.
 
@@ -42,14 +47,17 @@ which is how you can try this without a telescope.
 
 > **Status: early development.** The tools work and are tested — against ZWO's own built-in Alpaca
 > server running on a fake firmware, against the ASCOM simulators, and against a fake of
-> `seestar_alp` — but nothing here has been run against a real telescope yet. Expect rough edges
-> under the stars.
+> `seestar_alp`. Against a real telescope (S50 Pro, firmware 9.75) only the built-in server path has
+> been tried so far — see [`docs/hardware-checklist.md`](docs/hardware-checklist.md). Expect rough
+> edges under the stars.
 
 ## Requirements
 
 - Node.js 20 or newer
 - A Seestar on current firmware, on the same network as this machine — or a running `seestar_alp`,
   or any other ASCOM Alpaca device for the generic tools
+- For `telescope_center`: the [ASTAP](https://hnsky.org/astap.htm) command-line solver and a star
+  database (D05 for a Seestar)
 
 ## Turn on the telescope's Alpaca server
 
@@ -117,6 +125,10 @@ Every option can be given as a flag or an environment variable.
 | `--client-id <number>` | `SEESTAR_CLIENT_ID` | random | Fixed Alpaca ClientID |
 | `--username <name>` | `SEESTAR_USERNAME` | `User` | User for a password-protected server |
 | `--password <secret>` | `SEESTAR_PASSWORD` | — | Password, if the server has "Require Authorization" on |
+| `--capture-dir <path>` | `SEESTAR_CAPTURE_DIR` | `<work dir>/captures` | Where `camera_capture` and `telescope_center` save frames |
+| `--astap <path>` | `ASTAP_PATH` | searched | The ASTAP plate solver (`astap_cli`) |
+| `--astap-db <path>` | `ASTAP_DATABASE` | next to the binary | ASTAP star database directory |
+| `--astap-catalog <name>` | `ASTAP_CATALOG` | ASTAP decides | ASTAP catalogue, e.g. `d05` |
 
 > **Device numbers depend on the driver.** The built-in server numbers every device `0`, except
 > on the S50 Pro: its wide-angle camera and focuser are device `1`. On
@@ -139,6 +151,10 @@ only on `seestar_alp`; elsewhere they say what to use instead. Force the choice 
 
 `telescope_status` · `telescope_goto` · `telescope_sync` · `telescope_abort` · `telescope_park` ·
 `telescope_unpark` · `telescope_find_home` · `telescope_set_tracking` · `telescope_action`
+
+**Camera and plate solving** — any Alpaca camera; centring needs ASTAP
+
+`camera_capture` (FITS + preview, optional solve) · `telescope_center` (plate-solved goto)
 
 **Any other device** — focuser, filter wheel, dome, switch…
 
@@ -229,6 +245,39 @@ Right after power-on the built-in server does not count the closed arm as parked
 `telescope_goto` needs no unpark: it unfolds the arm and slews. After `telescope_park` the server
 does report the telescope as parked, so run `telescope_unpark` before the next goto. Tracking turns
 on by itself when a goto ends or is aborted.
+
+## Frames and plate solving
+
+The built-in server has no plate solving of its own, and a plain `telescope_goto` lands wherever
+the mount's model says the target is. Right after power-on, or after the telescope has been moved,
+that was 3.8° off on the first real test — wider than the whole field. `telescope_center` fixes it:
+
+1. slew to the target (J2000, as in catalogues; converted to the mount's equinox of date),
+2. take a short frame with the main camera,
+3. solve it with ASTAP,
+4. if the target is further from the centre than `tolerance_arcmin` (default 2′), sync the mount to
+   where it really points and slew again.
+
+On the real telescope one correction took the error from 3.8° to 5′.
+
+Install the ASTAP command-line solver and one star database — D05 suits the Seestar's 1.3° × 2.4°
+field — from [hnsky.org](https://hnsky.org/astap.htm), and pass `--astap` (and `--astap-db` if the
+database is not next to the binary).
+
+Frames are saved as 16-bit FITS with the Bayer pattern, exposure, gain and the mount position in
+the header:
+
+```
+<capture dir>/<night>/<target>/<target>_<exposure>s_g<gain>_<HHMMSS>.fits
+<capture dir>/<night>/<target>/center/…        the frames telescope_center took
+```
+
+`<night>` is the local date the evening started on, so a frame from 01:30 sits with the ones from
+23:00. Both tools return a stretched preview, so the model can see clouds, a wall or a balcony roof
+for itself. `camera: 1` uses the S50 Pro's wide-angle camera.
+
+The camera is left the way it was found: a gain set for one frame is put back, and a camera that
+had to be connected is disconnected again, so the Seestar app sees no difference.
 
 ## Without a telescope
 

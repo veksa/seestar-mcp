@@ -37,6 +37,15 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
       temperature 0; neither implements `stepsize`
 - [x] Filter wheel: `alpaca_put` `position` on `device_type: "filterwheel"` moves the wheel (listen).
       Names are `Dark`, `IR`, `LP` (positions 0–2); `position` reads -1 while the wheel turns
+- [x] `camera_capture` saves a FITS frame and returns a preview. A 2160×3840 frame (16.6 MB as
+      ImageBytes) takes 10–20 s to download over Wi-Fi; the exposure, FITS, preview and ASTAP solve
+      add well under a second. A blown star reads 65520, not 65535
+- [x] `camera_capture` with `solve: true` solves a 3 s frame of M45 with ASTAP and the D05
+      catalogue; the telephoto field is 1.35° × 2.39°
+- [x] `telescope_center` on M45 ends within 0.7′ of the target; the camera is left disconnected
+      with its gain restored. The first manual round of the same loop took a 3.8° error to 5′
+- [ ] `telescope_center` after a power cycle, when the mount's model is degrees off: how many
+      attempts does it need?
 - [ ] `seestar_state` refuses with directions rather than an "action not implemented" error
 - [ ] With the server and the Seestar app both connected, the app still controls the scope — it is
       the way out if the Alpaca server stops answering (see "If the built-in server stops

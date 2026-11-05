@@ -76,9 +76,10 @@ export function registerTelescopeTools(server: McpServer, session: Session): voi
 		{
 			title: "Slew to coordinates",
 			description:
-				"Slew the telescope to equatorial coordinates and return immediately. For a Seestar, " +
-				"prefer seestar_goto_target: it plate-solves and centres the target, which a raw slew " +
-				"does not. Poll telescope_status to see when the slew finishes.",
+				"Slew the telescope to equatorial coordinates in the mount's own equinox and return " +
+				"immediately. It does not check where the telescope really ends up: to get a target into " +
+				"the frame, use telescope_center (or seestar_goto_target on seestar_alp). Poll " +
+				"telescope_status to see when the slew finishes.",
 			inputSchema: z.object({
 				ra: raSchema,
 				dec: decSchema,

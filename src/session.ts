@@ -1,5 +1,6 @@
 import { AlpacaClient, type DeviceType } from "./alpaca/client.js";
 import { AlpacaDevice } from "./alpaca/device.js";
+import { Camera } from "./alpaca/devices/camera.js";
 import { Telescope } from "./alpaca/devices/telescope.js";
 import { AlpacaDeviceError, AlpacaTransportError, AscomErrorCode } from "./alpaca/errors.js";
 import type { ServerConfig } from "./config.js";
@@ -45,9 +46,10 @@ const NO_ACTION_LAYER: Record<Exclude<DriverKind, "seestar_alp">, string> = {
 	builtin:
 		"This is the Seestar's built-in Alpaca server. It offers the standard ASCOM devices — " +
 		"use telescope_* for the mount, and alpaca_get_property / alpaca_put for the camera, " +
-		"focuser, filter wheel and dew heater switch (all device 0). Plate-solved goto, stacking, " +
-		"the scheduler and file downloads need seestar_alp; start the server with --profile seestar " +
-		"against it to use them.",
+		"focuser and filter wheel (device 0; on an S50 Pro the wide-angle camera and focuser are 1). " +
+		"For a plate-solved goto use telescope_center, and camera_capture to take a frame. The " +
+		"telescope's own stacking, the scheduler and file downloads need seestar_alp; start the " +
+		"server with --profile seestar against it to use them.",
 	generic:
 		"The selected device is not a Seestar driven by seestar_alp, so the seestar_* tools do not " +
 		"apply. Use the telescope_* and alpaca_* tools, or start with --profile seestar to force them.",
@@ -143,6 +145,17 @@ export class Session {
 			);
 		}
 		return new Telescope(this.client(target.host, target.port), target.deviceNumber);
+	}
+
+	/**
+	 * A camera on the same server as the selected device.
+	 *
+	 * Cameras are addressed by number rather than selected: the mount stays the selected device
+	 * while frames are taken, and a Seestar S50 Pro has two cameras (0 telephoto, 1 wide angle).
+	 */
+	camera(deviceNumber = 0): Camera {
+		const target = this.requireTarget();
+		return new Camera(this.client(target.host, target.port), deviceNumber);
 	}
 
 	/**
