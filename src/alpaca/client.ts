@@ -210,9 +210,11 @@ export class AlpacaClient {
 				return await this.attempt<T>(url, init, fullContext, options);
 			} catch (error) {
 				// A device that answered and said "no" will say "no" again; only retry transport
-				// hiccups and server-side failures.
+				// hiccups and server-side failures. Not timeouts: a server that did not answer in time
+				// is busy or stuck, and a stuck one keeps every repeat waiting too — the Seestar's
+				// built-in server holds a thread for each such request until it is restarted.
 				const retryable =
-					error instanceof AlpacaTransportError ||
+					(error instanceof AlpacaTransportError && !error.timedOut) ||
 					(error instanceof AlpacaHttpError && error.status >= 500);
 				if (!retryable || options.signal?.aborted) throw error;
 				lastError = error;

@@ -112,6 +112,18 @@ describe("AlpacaClient", () => {
 		expect(fake.requests.filter((r) => r.path.endsWith("/connected"))).toHaveLength(2);
 	});
 
+	it("does not retry a GET that timed out, because a stuck server stays stuck", async () => {
+		fake.failNext({ delayMs: 300, times: 3 });
+		const before = fake.requests.length;
+
+		await expectFailure(
+			client.get("telescope", 1, "connected", {}, { timeoutMs: 40 }),
+			AlpacaTransportError,
+		);
+
+		expect(fake.requests.length - before).toBe(1);
+	});
+
 	it("does not retry a PUT, because commands are not idempotent", async () => {
 		fake.setConnected(1, true);
 		fake.sim.unpark();
