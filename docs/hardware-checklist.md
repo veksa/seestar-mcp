@@ -13,7 +13,8 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
 
 - [ ] The Seestar is powered, awake and on the same network; note its IP address
 - [ ] `alpaca_discover` finds it on port **32323**, listing camera, focuser, filter wheel, telescope
-      and switch — all device **0**
+      and switch — all device **0** (on the S50 Pro the wide-angle camera and focuser are device
+      **1**)
 - [ ] If the server's settings page has "Require Authorization" on, `device_connect` without
       `--password` says so; with `--password` it connects
 - [ ] `device_connect` (no arguments) reports `driver_kind: builtin`

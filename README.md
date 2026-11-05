@@ -50,6 +50,26 @@ which is how you can try this without a telescope.
 - A Seestar on current firmware, on the same network as this machine — or a running `seestar_alp`,
   or any other ASCOM Alpaca device for the generic tools
 
+## Turn on the telescope's Alpaca server
+
+The built-in server ships with firmware 9.75 and app 3.4.1, and it is **off by default**.
+
+1. Put the Seestar on your home Wi-Fi with the app's Station Mode, the same network as this
+   machine. The telescope's own hotspot works too (the address is then `10.0.0.1`), but the computer
+   loses its internet connection while it is joined to it.
+2. Unplug the USB cable. While the Seestar is mounted as a drive, it does not answer on the network.
+3. In the app, connect to the telescope and open **Advanced Feature → Assistive Features**. Turn on
+   **Seestar Alpaca**.
+4. Wait a minute or two: the server starts some time after the switch is flipped.
+5. Check that it answers:
+
+   ```sh
+   curl "http://<telescope address>:32323/management/v1/configureddevices"
+   ```
+
+   The reply lists the telescope, cameras, focusers, filter wheel and switch. The app has no password
+   setting for this server, so it accepts requests from anyone on the network.
+
 ## Install
 
 Claude Code:
@@ -97,7 +117,8 @@ Every option can be given as a flag or an environment variable.
 | `--username <name>` | `SEESTAR_USERNAME` | `User` | User for a password-protected server |
 | `--password <secret>` | `SEESTAR_PASSWORD` | — | Password, if the server has "Require Authorization" on |
 
-> **Device numbers depend on the driver.** The built-in server numbers every device `0`. On
+> **Device numbers depend on the driver.** The built-in server numbers every device `0`, except
+> on the S50 Pro: its wide-angle camera and focuser are device `1`. On
 > `seestar_alp`, device `0` is the "federation" — a command sent to it goes to *every* telescope it
 > manages — and your first scope is device `1`. `device_connect` warns if it finds itself on the
 > federation.
