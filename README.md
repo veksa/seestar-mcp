@@ -225,6 +225,9 @@ On the built-in server, reach the camera, focuser and filter wheel with `alpaca_
 and focuser are device `1`). Select the device with `device_connect` first: a camera answers almost
 nothing until it is connected.
 
+A session on the built-in server needs no unpark: with the arm closed, `telescope_goto` unfolds it
+and slews. Tracking turns on by itself when the slew ends.
+
 ## Without a telescope
 
 ```sh

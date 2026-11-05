@@ -12,17 +12,20 @@ Current firmware serves Alpaca from the telescope itself. The test stand (`yarn 
 ZWO's own server, so what is unproven here is the firmware underneath it.
 
 - [ ] The Seestar is powered, awake and on the same network; note its IP address
-- [ ] `alpaca_discover` finds it on port **32323**, listing camera, focuser, filter wheel, telescope
+- [x] `alpaca_discover` finds it on port **32323**, listing camera, focuser, filter wheel, telescope
       and switch — all device **0** (on the S50 Pro the wide-angle camera and focuser are device
       **1**)
 - [ ] If the server's settings page has "Require Authorization" on, `device_connect` without
       `--password` says so; with `--password` it connects
-- [ ] `device_connect` (no arguments) reports `driver_kind: builtin`
-- [ ] `telescope_status` reports coordinates that are not obviously wrong for your sky
+- [x] `device_connect` (no arguments) reports `driver_kind: builtin`
+- [x] `telescope_status` reports coordinates that are not obviously wrong for your sky. With the
+      arm closed it reports altitude −89.8°, `at_home: yes` and `parked: no`
 - [ ] `telescope_set_tracking` on/off is reflected in `telescope_status`
-- [ ] **With the arm closed**, `telescope_goto` to a target well above the horizon: does the arm
+- [x] **With the arm closed**, `telescope_goto` to a target well above the horizon: does the arm
       unfold, or does the goto fail with "fail to operate"? The server's `Unpark` only clears a flag,
-      so this decides how a session has to start. Write down what happened.
+      so this decides how a session has to start. **Result (S50 Pro, firmware 9.75, 2026-11-05):**
+      the arm unfolds and the goto completes with no unpark first; the server turns tracking on by
+      itself when the slew ends
 - [ ] `telescope_abort` mid-slew stops the mount
 - [ ] `telescope_park` closes the arm; `telescope_status` reports `parked: yes` afterwards
 - [ ] Focuser: `alpaca_put` `connected` on `device_type: "focuser"`, then `alpaca_get_property`
