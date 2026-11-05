@@ -27,7 +27,14 @@ export class SeestarError extends Error {
 }
 
 export class SeestarActions {
-	constructor(readonly device: AlpacaDevice) {}
+	/**
+	 * @param ready Checked before every action — the session uses it to refuse, with directions, when
+	 *   the driver has no action layer at all.
+	 */
+	constructor(
+		readonly device: AlpacaDevice,
+		private readonly ready: () => Promise<void> = async () => {},
+	) {}
 
 	/** Invoke a Seestar action by name. */
 	async call<T>(
@@ -35,6 +42,7 @@ export class SeestarActions {
 		parameters: Record<string, unknown> = {},
 		options?: RequestOptions,
 	): Promise<T> {
+		await this.ready();
 		const raw = await this.device.action(action, JSON.stringify(parameters), options);
 		return unwrap<T>(action, raw);
 	}

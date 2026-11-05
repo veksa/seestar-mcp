@@ -113,12 +113,45 @@ describe("device_connect", () => {
 		expect(textOf(result)).toContain("generic Alpaca device");
 	});
 
+	it("tells the Seestar's built-in Alpaca server apart from seestar_alp", async () => {
+		harness = await startHarness(
+			{},
+			{
+				builtin: true,
+				identity: {
+					name: "Seestar S50_1a2b3c4d Telescope",
+					description: "Seestar S50_1a2b3c4d Telescope",
+					driverInfo: "Telescope V3",
+				},
+			},
+		);
+
+		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
+
+		expect(structuredOf(result)).toMatchObject({ is_seestar: false, driver_kind: "builtin" });
+		expect(textOf(result)).toContain("built-in Alpaca server");
+	});
+
+	it("points the seestar_* tools elsewhere on the built-in server", async () => {
+		harness = await startHarness(
+			{},
+			{ builtin: true, identity: { name: "Seestar S50_1a2b3c4d Telescope" } },
+		);
+		await connect();
+
+		const result = await harness.client.callTool({ name: "seestar_state", arguments: {} });
+
+		expect(isError(result)).toBe(true);
+		expect(textOf(result)).toContain("built-in Alpaca server");
+		expect(textOf(result)).toContain("telescope_*");
+	});
+
 	it("recognises the real driver's own description as a Seestar", async () => {
 		harness = await startHarness();
 
 		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
 
-		expect(structuredOf(result)).toMatchObject({ is_seestar: true });
+		expect(structuredOf(result)).toMatchObject({ is_seestar: true, driver_kind: "seestar_alp" });
 	});
 });
 

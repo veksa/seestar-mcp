@@ -226,7 +226,13 @@ describe("seestar_power", () => {
 		});
 
 		expect(isError(result)).toBe(true);
-		expect(harness.fake.sim.calls.some((call) => call.action === "method_sync")).toBe(false);
+		// Only the driver probe (test_connection) may have reached the firmware.
+		const sent = harness.fake.sim.calls.filter(
+			(call) =>
+				call.action === "method_sync" &&
+				(call.parameters as { method?: string }).method !== "test_connection",
+		);
+		expect(sent).toEqual([]);
 	});
 
 	it("shuts down when confirmed", async () => {

@@ -49,6 +49,11 @@ export interface FakeAlpacaOptions {
 	identity?: { name?: string; description?: string; driverInfo?: string };
 	/** Start a UDP discovery responder as well. */
 	discovery?: boolean;
+	/**
+	 * Behave like the Seestar's built-in Alpaca server: same "Seestar" naming, but no action layer,
+	 * so every `action` answers ActionNotImplemented.
+	 */
+	builtin?: boolean;
 }
 
 export interface FakeAlpaca {
@@ -68,6 +73,7 @@ export interface FakeAlpaca {
 
 const NOT_FOUND = Symbol("not-found");
 const NOT_CONNECTED = 0x407;
+const ACTION_NOT_IMPLEMENTED = 0x40c;
 const INVALID_VALUE = 0x401;
 
 /** Properties readable before the device is connected. */
@@ -227,7 +233,15 @@ export async function startFakeAlpaca(options: FakeAlpacaOptions = {}): Promise<
 		}
 
 		if (request.method === "PUT") {
-			const result = writeProperty(sim, method, params, deviceNumber, connected);
+			const result =
+				options.builtin && method === "action"
+					? {
+							error: {
+								number: ACTION_NOT_IMPLEMENTED,
+								message: `Action ${params.Action} is not implemented by this driver`,
+							},
+						}
+					: writeProperty(sim, method, params, deviceNumber, connected);
 			if (result === NOT_FOUND) {
 				respondText(response, 400, `unknown method ${method}`);
 				return;

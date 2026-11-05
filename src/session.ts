@@ -1,12 +1,35 @@
 import { AlpacaClient, type DeviceType } from "./alpaca/client.js";
 import { AlpacaDevice } from "./alpaca/device.js";
 import { Telescope } from "./alpaca/devices/telescope.js";
+import { AlpacaDeviceError, AscomErrorCode } from "./alpaca/errors.js";
 import type { ServerConfig } from "./config.js";
 import { SeestarActions } from "./seestar/actions.js";
 import { SeestarDevice } from "./seestar/device.js";
 
 /** Raised when a tool needs a device and there is none — always with a way out in the message. */
 export class SessionError extends Error {}
+
+/**
+ * What is answering on the other end.
+ *
+ * - `builtin`: the Alpaca server in the Seestar's own firmware. Standard ASCOM devices only.
+ * - `seestar_alp`: the community driver, which adds the Seestar action layer the seestar_* tools use.
+ * - `generic`: any other Alpaca device.
+ */
+export type DriverKind = "builtin" | "seestar_alp" | "generic";
+
+/** Why a seestar_* tool cannot run, for each kind of driver that lacks the action layer. */
+const NO_ACTION_LAYER: Record<Exclude<DriverKind, "seestar_alp">, string> = {
+	builtin:
+		"This is the Seestar's built-in Alpaca server. It offers the standard ASCOM devices — " +
+		"use telescope_* for the mount, and alpaca_get_property / alpaca_put for the camera, " +
+		"focuser, filter wheel and dew heater switch (all device 0). Plate-solved goto, stacking, " +
+		"the scheduler and file downloads need seestar_alp; start the server with --profile seestar " +
+		"against it to use them.",
+	generic:
+		"The selected device is not a Seestar driven by seestar_alp, so the seestar_* tools do not " +
+		"apply. Use the telescope_* and alpaca_* tools, or start with --profile seestar to force them.",
+};
 
 export interface Target {
 	host: string;
@@ -32,7 +55,7 @@ export interface ConnectOptions {
 export class Session {
 	private currentTarget: Target | undefined;
 	private readonly clients = new Map<string, AlpacaClient>();
-	private seestarCache = new Map<string, boolean>();
+	private driverCache = new Map<string, DriverKind>();
 
 	constructor(readonly config: ServerConfig) {
 		if (config.host) {
@@ -97,9 +120,19 @@ export class Session {
 		return new Telescope(this.client(target.host, target.port), target.deviceNumber);
 	}
 
-	/** The selected device driven through the Seestar action layer. */
+	/**
+	 * The selected device driven through the Seestar action layer.
+	 *
+	 * Refuses up front, with directions, when the driver has no such layer — otherwise the first
+	 * symptom would be a bare "action not implemented" from deep inside a tool.
+	 */
 	seestar(): SeestarDevice {
-		return new SeestarDevice(new SeestarActions(this.device()));
+		return new SeestarDevice(new SeestarActions(this.device(), () => this.requireActionLayer()));
+	}
+
+	private async requireActionLayer(): Promise<void> {
+		const kind = await this.driver();
+		if (kind !== "seestar_alp") throw new SessionError(NO_ACTION_LAYER[kind]);
 	}
 
 	/** Point the session at a device and set its `Connected` property. */
@@ -133,19 +166,26 @@ export class Session {
 		return target;
 	}
 
-	/**
-	 * Whether the selected device is driven by seestar_alp.
-	 *
-	 * There is no capability flag for this — `supportedactions` is empty on that driver — so we go by
-	 * how it describes itself, which is what a person would do.
-	 */
+	/** Whether the seestar_* tools apply to the selected device. */
 	async isSeestar(): Promise<boolean> {
-		if (this.config.profile === "seestar") return true;
-		if (this.config.profile === "generic") return false;
+		return (await this.driver()) === "seestar_alp";
+	}
+
+	/**
+	 * Which kind of driver the selected device is.
+	 *
+	 * Both Seestar drivers put "Seestar" in the device's name or description, and neither advertises
+	 * any actions, so the name only says "some Seestar". What tells them apart is whether the action
+	 * layer exists: `test_connection` is the firmware's own heartbeat, harmless to send, and the
+	 * built-in server answers ActionNotImplemented for anything it is asked through `action`.
+	 */
+	async driver(): Promise<DriverKind> {
+		if (this.config.profile === "seestar") return "seestar_alp";
+		if (this.config.profile === "generic") return "generic";
 
 		const target = this.requireTarget();
 		const key = `${target.host}:${target.port}/${target.deviceType}/${target.deviceNumber}`;
-		const cached = this.seestarCache.get(key);
+		const cached = this.driverCache.get(key);
 		if (cached !== undefined) return cached;
 
 		const device = this.device();
@@ -155,10 +195,31 @@ export class Session {
 			device.name().catch(() => ""),
 		]);
 
-		// Only "seestar": the driver calls itself "Seestar Smart Telescope" / "Alpaca Driver for
-		// Seestar S50", while matching "alp" would also catch every "Alpaca …" device there is.
-		const detected = /seestar/i.test(`${description} ${driverInfo} ${name}`);
-		this.seestarCache.set(key, detected);
-		return detected;
+		// Only "seestar": seestar_alp calls itself "Alpaca Driver for Seestar S50 Smart Telescope" and
+		// the built-in server "Seestar <ssid> Telescope", while matching "alp" would also catch every
+		// "Alpaca …" device there is.
+		if (!/seestar/i.test(`${description} ${driverInfo} ${name}`)) {
+			this.driverCache.set(key, "generic");
+			return "generic";
+		}
+
+		try {
+			await device.action("method_sync", JSON.stringify({ method: "test_connection" }));
+		} catch (error) {
+			if (
+				error instanceof AlpacaDeviceError &&
+				(error.errorNumber === AscomErrorCode.ActionNotImplemented ||
+					error.errorNumber === AscomErrorCode.NotImplemented)
+			) {
+				this.driverCache.set(key, "builtin");
+				return "builtin";
+			}
+			// Asleep, not connected, a timeout: it is a Seestar driver all the same, but the answer is
+			// not conclusive, so ask again next time rather than remember a guess.
+			return "seestar_alp";
+		}
+
+		this.driverCache.set(key, "seestar_alp");
+		return "seestar_alp";
 	}
 }

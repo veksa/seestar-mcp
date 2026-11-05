@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DEVICE_TYPES } from "../alpaca/client.js";
 import { type ConfiguredDevice, describeServer, discover } from "../alpaca/discovery.js";
 import { formatFields } from "../format.js";
-import type { Session } from "../session.js";
+import type { DriverKind, Session } from "../session.js";
 import { guard, textResult } from "./result.js";
 
 const serverShape = z.object({
@@ -156,6 +156,7 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 				driver: z.string().optional(),
 				interface_version: z.number().optional(),
 				is_seestar: z.boolean().optional(),
+				driver_kind: z.enum(["builtin", "seestar_alp", "generic"]).optional(),
 			}),
 		},
 		async ({ host, port, device_type, device_number, connected }) =>
@@ -180,7 +181,8 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 
 				const device = session.device();
 				const described = await device.describe();
-				const isSeestar = await session.isSeestar();
+				const driver = await session.driver();
+				const isSeestar = driver === "seestar_alp";
 
 				const structured = {
 					host: target.host,
@@ -194,6 +196,7 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 						? { interface_version: described.interfaceVersion }
 						: {}),
 					is_seestar: isSeestar,
+					driver_kind: driver,
 				};
 
 				const text = formatFields([
@@ -205,7 +208,7 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 					["driver", described.driverInfo],
 					["driver version", described.driverVersion],
 					["interface", described.interfaceVersion?.toString()],
-					["seestar", isSeestar ? "yes — the seestar_* tools apply" : "no — generic Alpaca device"],
+					["seestar", DRIVER_SUMMARY[driver]],
 				]);
 
 				return textResult(text, structured);
@@ -289,3 +292,10 @@ function toStructuredServer(found: {
 		...(found.error ? { error: found.error } : {}),
 	};
 }
+
+const DRIVER_SUMMARY: Record<DriverKind, string> = {
+	builtin:
+		"yes — the Seestar's built-in Alpaca server: telescope_* for the mount, alpaca_* for the rest",
+	seestar_alp: "yes — seestar_alp: the seestar_* tools apply",
+	generic: "no — generic Alpaca device",
+};
