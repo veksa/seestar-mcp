@@ -177,6 +177,26 @@ to be installed for each.
 - `seestar_power` (shutdown, reboot) needs both `--allow-destructive` at startup **and**
   `confirm: true` in the call. A telescope that has been shut down cannot be woken remotely.
 - `seestar_raw` and `alpaca_put` have no guard rails by design. `--no-raw` hides the firmware one.
+- Before anything that moves the telescope, the server reads its slewing state with a short
+  timeout. If that read does not come back, nothing is sent, and the tool says what to do instead.
+  `telescope_abort` is never held back.
+
+### If the built-in server stops answering
+
+The Seestar's built-in Alpaca server has a weak spot, reproduced on the test stand: a single reply
+from the firmware in a shape it does not expect ends its link to the firmware. From then on every
+request that needs the firmware — position, slewing, abort, park — waits forever, while the
+server still answers some things from memory. `telescope_status` flags this, and movements are
+refused.
+
+The telescope itself is not at risk. A goto stops at its target, and a manual axis move is
+re-requested every second for three seconds at a time, so it stops on its own once the requests
+stop. To recover:
+
+1. Stop or park with the Seestar app — it talks to the firmware directly, not through Alpaca.
+2. Switch the telescope off and on again. That restarts its Alpaca server; reconnecting is not
+   enough.
+3. Run `device_connect` again.
 
 On the built-in server, reach the camera, focuser, filter wheel and dew heater switch with
 `alpaca_get_property` and `alpaca_put` (`device_type: "focuser"` and so on, all device `0`).

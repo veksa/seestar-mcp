@@ -28,6 +28,11 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
       `position` gives a plausible number
 - [ ] Filter wheel: `alpaca_put` `position` on `device_type: "filterwheel"` moves the wheel (listen)
 - [ ] `seestar_state` refuses with directions rather than an "action not implemented" error
+- [ ] With the server and the Seestar app both connected, the app still controls the scope — it is
+      the way out if the Alpaca server stops answering (see "If the built-in server stops
+      answering" in the README)
+- [ ] If any request hangs: note the tool and arguments, then confirm that a power cycle brings the
+      Alpaca server back
 
 ## Part B — `seestar_alp`
 
