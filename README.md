@@ -27,8 +27,9 @@ They meet at a directory of files, not in code, so you can run either on its own
 side is documented in [`docs/processing.md`](docs/processing.md).
 
 Current Seestar firmware runs an Alpaca server on the telescope itself (port `32323`). That is all
-this server needs for the standard ASCOM devices: the mount, the camera, the focuser, the filter
-wheel and the dew heater switch. It is the default.
+this server needs for the standard ASCOM devices: the mount, the camera, the focuser and the filter
+wheel. It is the default. It also lists a switch, but on firmware 9.75 that switch calls itself
+"Alpaca Switch Simulator", so do not expect it to control the dew heater.
 
 The Seestar-specific tools — plate-solved goto, stacking, mosaics, the scheduler, downloads — need
 [`seestar_alp`](https://github.com/smart-underworld/seestar_alp), a community driver that speaks the
@@ -219,8 +220,10 @@ stop. To recover:
    enough.
 3. Run `device_connect` again.
 
-On the built-in server, reach the camera, focuser, filter wheel and dew heater switch with
-`alpaca_get_property` and `alpaca_put` (`device_type: "focuser"` and so on, all device `0`).
+On the built-in server, reach the camera, focuser and filter wheel with `alpaca_get_property` and
+`alpaca_put` (`device_type: "focuser"` and so on, device `0`; on the S50 Pro the wide-angle camera
+and focuser are device `1`). Select the device with `device_connect` first: a camera answers almost
+nothing until it is connected.
 
 ## Without a telescope
 

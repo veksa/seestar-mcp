@@ -130,7 +130,8 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 			title: "Connect to a device",
 			description:
 				"Select a device and open a connection to it. Every other tool acts on the device " +
-				"selected here. On a Seestar's built-in server every device is number 0 on port 32323; on " +
+				"selected here. On a Seestar's built-in server (port 32323) every device is number 0, except " +
+				"the S50 Pro's wide-angle camera and focuser, which are number 1; on " +
 				"seestar_alp a scope is device_number 1 on port 5555.",
 			inputSchema: z.object({
 				host: z
