@@ -20,7 +20,8 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
 - [x] `device_connect` (no arguments) reports `driver_kind: builtin`
 - [x] `telescope_status` reports coordinates that are not obviously wrong for your sky. With the
       arm closed it reports altitude −89.8°, `at_home: yes` and `parked: no`
-- [ ] `telescope_set_tracking` on/off is reflected in `telescope_status`
+- [x] `telescope_set_tracking` on/off is reflected in `telescope_status`: with tracking on, RA
+      and Dec hold while the azimuth drifts west; off, the azimuth holds while RA climbs
 - [x] **With the arm closed**, `telescope_goto` to a target well above the horizon: does the arm
       unfold, or does the goto fail with "fail to operate"? The server's `Unpark` only clears a flag,
       so this decides how a session has to start. **Result (S50 Pro, firmware 9.75, 2026-11-05):**
