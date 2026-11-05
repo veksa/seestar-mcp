@@ -12,12 +12,16 @@ import { defaultWorkDir } from "./workdir.js";
 export const configSchema = z.object({
 	/** Alpaca server address. Without it, the model has to call `device_connect` first. */
 	host: z.string().min(1).optional(),
-	port: z.number().int().min(1).max(65535).default(5555),
-	/** seestar_alp numbers real scopes from 1; device 0 is the "federation" of all scopes. */
-	deviceNumber: z.number().int().min(0).default(1),
+	/** The Seestar's built-in Alpaca server listens on 32323; seestar_alp on 5555. */
+	port: z.number().int().min(1).max(65535).default(32323),
+	/**
+	 * The built-in server numbers every device 0. On seestar_alp real scopes start at 1 and device 0
+	 * is the "federation" of all scopes.
+	 */
+	deviceNumber: z.number().int().min(0).default(0),
 	deviceType: z.enum(DEVICE_TYPES).default("telescope"),
 	timeoutMs: z.number().int().min(100).default(10_000),
-	/** `auto` enables the Seestar tools when the driver looks like seestar_alp. */
+	/** `auto` lets the seestar_* tools run when the driver turns out to be seestar_alp. */
 	profile: z.enum(["auto", "seestar", "generic"]).default("auto"),
 	/** Register only tools that cannot change the state of the telescope. */
 	readOnly: z.boolean().default(false),
@@ -38,8 +42,8 @@ Usage: seestar-mcp [options]
 
 Options:
   --host <address>       Alpaca server address (env SEESTAR_HOST)
-  --port <number>        Alpaca port, default 5555 (env SEESTAR_PORT)
-  --device <number>      Device number, default 1; 0 is the federation (env SEESTAR_DEVICE)
+  --port <number>        Alpaca port, default 32323; seestar_alp uses 5555 (env SEESTAR_PORT)
+  --device <number>      Device number, default 0; on seestar_alp use 1 (env SEESTAR_DEVICE)
   --device-type <type>   Alpaca device type, default telescope (env SEESTAR_DEVICE_TYPE)
   --timeout <ms>         Per-request timeout, default 10000 (env SEESTAR_TIMEOUT_MS)
   --profile <name>       auto | seestar | generic, default auto (env SEESTAR_PROFILE)

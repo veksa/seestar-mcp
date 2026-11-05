@@ -30,7 +30,8 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 		{
 			title: "Find Alpaca servers",
 			description:
-				"Broadcast on the local network for ASCOM Alpaca servers (seestar_alp, ASCOM simulators, " +
+				"Broadcast on the local network for ASCOM Alpaca servers (a Seestar's built-in server, " +
+				"seestar_alp, ASCOM simulators, " +
 				"and any other Alpaca device) and list the devices each one exposes. Use this when you " +
 				"do not know the telescope's address.",
 			inputSchema: z.object({
@@ -52,7 +53,8 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 				if (servers.length === 0) {
 					return textResult(
 						"No Alpaca servers answered.\n\n" +
-							"Check that seestar_alp is running and on the same network, or connect directly with " +
+							"Check that the Seestar is on and on the same network (or that seestar_alp is running), " +
+							"or connect directly with " +
 							"device_connect if you know the address.",
 						structured,
 					);
@@ -72,7 +74,8 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 					.join("\n\n");
 
 				return textResult(
-					`${text}\n\nSeestar tip: device 0 is the "federation" (all scopes at once); a real scope is 1.`,
+					`${text}\n\nSeestar tip: the built-in server (port 32323) numbers its devices from 0. On ` +
+						'seestar_alp (port 5555) device 0 is the "federation" (all scopes at once) and a real scope is 1.',
 					structured,
 				);
 			}),
@@ -87,7 +90,7 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 				"you know the address but not the device numbers.",
 			inputSchema: z.object({
 				host: z.string().describe("Address of the Alpaca server, e.g. 192.168.1.20"),
-				port: z.number().int().min(1).max(65535).optional().describe("Default 5555"),
+				port: z.number().int().min(1).max(65535).optional().describe("Default 32323"),
 			}),
 			outputSchema: serverShape,
 			annotations: { readOnlyHint: true, openWorldHint: true },
@@ -127,7 +130,8 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 			title: "Connect to a device",
 			description:
 				"Select a device and open a connection to it. Every other tool acts on the device " +
-				"selected here. For a Seestar this is device_number 1 on port 5555.",
+				"selected here. On a Seestar's built-in server every device is number 0 on port 32323; on " +
+				"seestar_alp a scope is device_number 1 on port 5555.",
 			inputSchema: z.object({
 				host: z
 					.string()
@@ -140,7 +144,7 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 					.int()
 					.min(0)
 					.optional()
-					.describe("Default 1. On seestar_alp, 0 addresses all scopes at once."),
+					.describe("Default 0. On seestar_alp, 0 addresses all scopes at once — use 1 there."),
 				connected: z
 					.boolean()
 					.optional()
@@ -211,7 +215,15 @@ export function registerDiscoveryTools(server: McpServer, session: Session): voi
 					["seestar", DRIVER_SUMMARY[driver]],
 				]);
 
-				return textResult(text, structured);
+				// The default device number suits the built-in server; on seestar_alp the same number is
+				// the federation, which sends every command to every scope it manages.
+				const federation =
+					driver === "seestar_alp" && target.deviceNumber === 0
+						? "\n\nWarning: on seestar_alp device 0 is the federation — every command goes to " +
+							"every scope it manages. Reconnect with device_number: 1 for a single scope."
+						: "";
+
+				return textResult(`${text}${federation}`, structured);
 			}),
 	);
 

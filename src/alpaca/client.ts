@@ -54,7 +54,7 @@ export interface RequestOptions {
 	retries?: number;
 }
 
-const DEFAULT_PORT = 5555;
+const DEFAULT_PORT = 32323;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 150;

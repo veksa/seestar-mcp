@@ -113,6 +113,15 @@ describe("device_connect", () => {
 		expect(textOf(result)).toContain("generic Alpaca device");
 	});
 
+	it("warns when device 0 on seestar_alp is the federation", async () => {
+		harness = await startHarness({ deviceNumber: 0 });
+
+		const result = await harness.client.callTool({ name: "device_connect", arguments: {} });
+
+		expect(textOf(result)).toContain("federation");
+		expect(textOf(result)).toContain("device_number: 1");
+	});
+
 	it("tells the Seestar's built-in Alpaca server apart from seestar_alp", async () => {
 		harness = await startHarness(
 			{},

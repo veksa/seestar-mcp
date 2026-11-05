@@ -61,7 +61,7 @@ export function explain(error: unknown): string {
 		const where = error.context.url ? ` (${new URL(error.context.url).host})` : "";
 		return error.timedOut
 			? `The Alpaca server did not answer in time${where}. It may be busy plate-solving; try again, or raise --timeout.`
-			: `Could not reach the Alpaca server${where}: ${error.message}\n\nIs seestar_alp running, and is the host reachable from this machine?`;
+			: `Could not reach the Alpaca server${where}: ${error.message}\n\nIs the Seestar (or seestar_alp) on, and is the host reachable from this machine?`;
 	}
 
 	if (error instanceof AlpacaHttpError) {
