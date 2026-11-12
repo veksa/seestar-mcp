@@ -2,6 +2,8 @@
 #
 # The server is a .NET 8 program; the official ASP.NET runtime image runs its assemblies on any
 # architecture. Node is added for the fake firmware it talks to over 127.0.0.1:4700.
+# Node stays on 24: only the binary is copied, and Node 26 (arm64, checked 2026-11) links
+# libatomic.so.1, which the ASP.NET image does not have, so `node` would not start there.
 FROM node:24-bookworm-slim AS node
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
