@@ -40,11 +40,10 @@ async function start(
 
 /**
  * A stand-in for astap_cli that "solves" every frame to the given J2000 position, by writing the
- * `.ini` the real one writes next to its input. It also records its arguments.
+ * `.ini` the real one writes next to its input. Node runs the fake; a one-line shim launches it —
+ * a .cmd on Windows, which cannot run a shell script, and an executable shell script elsewhere.
  */
 async function fakeAstap(raHours: number, dec: number): Promise<string> {
-	const path = join(workDir, "astap_cli");
-	const log = join(workDir, "astap.log");
 	const ini = [
 		"PLTSOLVD=T",
 		`CRVAL1=${raHours * 15}`,
@@ -53,16 +52,25 @@ async function fakeAstap(raHours: number, dec: number): Promise<string> {
 		"CD1_2=1.115E-003",
 		"CD2_1=-1.115E-003",
 		"CD2_2=-5.57E-004",
-	].join("\\n");
+	].join("\n");
+	const script = join(workDir, "astap_cli.mjs");
 	await writeFile(
-		path,
+		script,
 		[
-			"#!/bin/sh",
-			`printf '%s\\n' "$*" >> "${log}"`,
-			'while [ $# -gt 0 ]; do if [ "$1" = "-f" ]; then f="$2"; fi; shift; done',
-			`printf '${ini}\\n' > "\${f%.fits}.ini"`,
+			'import { writeFileSync } from "node:fs";',
+			"const args = process.argv.slice(2);",
+			'const file = args[args.indexOf("-f") + 1];',
+			`writeFileSync(file.replace(/\\.fits$/i, ".ini"), ${JSON.stringify(`${ini}\n`)});`,
 		].join("\n"),
 	);
+
+	if (process.platform === "win32") {
+		const path = join(workDir, "astap_cli.cmd");
+		await writeFile(path, `@"${process.execPath}" "${script}" %*\r\n`);
+		return path;
+	}
+	const path = join(workDir, "astap_cli");
+	await writeFile(path, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`);
 	await chmod(path, 0o755);
 	return path;
 }
