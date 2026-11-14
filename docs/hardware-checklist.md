@@ -68,25 +68,37 @@ The rest of this list is for the `seestar_alp` path, which the `seestar_*`, `ima
 `schedule_*` tools need. Whether `seestar_alp` can reach current firmware at all is itself the first
 thing to find out.
 
+> **Verified 2026-11-15 on a Seestar S50 Pro, firmware 9.75, seestar_alp v3.3.1.** Sections 1 and 2
+> (discovery, connection, read-only pass) pass. Firmware 7.18+ needs the client interop PEM key
+> (extracted from the Seestar APK); with it set in `config.toml` the alp log prints
+> `Authentication successful` and all reads work. Sections 3–9 (startup, movement, imaging,
+> scheduler) still await a clear night.
+>
+> **The telescope's IP changes** (DHCP, and after a power cycle). Always run `alpaca_discover` first
+> and point both the MCP `--host` and `seestar_alp`'s `config.toml` at the address it reports — a
+> stale IP shows up as `connect socket error: timed out` with an empty UDP scan, which is not an auth
+> problem. The subnet itself can change between sessions, not just the host part.
+
 ## Before you start
 
-- [ ] `seestar_alp` is running and its web UI answers on `http://<host>:5432`
-- [ ] The Seestar is powered, awake, and connected to the same network
+- [x] `seestar_alp` is running and its web UI answers on `http://<host>:<uiport>` (set in `config.toml`; defaults to 5432)
+- [x] The Seestar is powered, awake, and connected to the same network
 - [ ] The telescope has line of sight to the sky, and nothing within its swing radius
-- [ ] Battery above 50% and at least a few GB free — check both in step 3
+- [x] Battery above 50% and at least a few GB free — check both in step 3 (91%, 106 GB)
 
-Start the server pointed at the driver:
+Start the server pointed at the driver (port is `seestar_alp`'s Alpaca port from `config.toml`, not
+necessarily 5555):
 
 ```sh
-npx -y seestar-mcp --host <host> --port 5555 --device 1
+npx -y seestar-mcp --host <host> --port <alp alpaca port> --device 1
 ```
 
 ## 1. Discovery and connection
 
-- [ ] `alpaca_discover` finds the driver, and the port matches `seestar_alp`'s config (5555 by default)
-- [ ] The device list shows device **1** for the scope (device 0 is the federation — do not use it)
-- [ ] `device_connect` succeeds and reports `is_seestar: true`
-- [ ] `device_info` shows a plausible driver name and version
+- [x] `alpaca_discover` finds the driver, and the port matches `seestar_alp`'s config (5555 by default)
+- [x] The device list shows device **1** for the scope (device 0 is the federation — do not use it)
+- [x] `device_connect` succeeds and reports `is_seestar: true`
+- [x] `device_info` shows a plausible driver name and version
 
 If discovery finds nothing but `device_connect` works, that is a network/broadcast issue, not a
 driver one — worth noting in an issue.
@@ -95,10 +107,13 @@ driver one — worth noting in an issue.
 
 Nothing here moves the telescope. Run it all before anything that does.
 
-- [ ] `telescope_status` reports coordinates, and they are not obviously wrong for your sky
-- [ ] `seestar_state` shows battery, firmware and free storage
-- [ ] `seestar_events` returns something (probably little before startup)
-- [ ] `seestar_settings` shows exposure and gain
+- [x] `telescope_status` reports coordinates, and they are not obviously wrong for your sky
+- [x] `seestar_state` shows battery, firmware and free storage
+- [x] `seestar_events` returns something (probably little before startup)
+- [x] `seestar_settings` shows exposure and gain
+
+> One quirk: fire alp requests one at a time. Several Alpaca calls at once can reset a connection
+> (`ECONNRESET`); sequential calls are fine.
 
 ## 3. Startup sequence
 

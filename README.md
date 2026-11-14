@@ -109,6 +109,10 @@ Replace `<telescope address>` with the telescope's IP address. Don't know it? Le
 ask the model to run `alpaca_discover` — it will broadcast on the local network and list what
 answers.
 
+The telescope's IP is not stable — DHCP and a power cycle both move it. Run `alpaca_discover` at the
+start of every session and use the address it reports; a stale `--host` fails as a connection
+timeout, not an obvious error. The same applies to `seestar_alp`'s own `config.toml`.
+
 To go through `seestar_alp` instead, point `--host` at the machine running it and add
 `--port 5555 --device 1`.
 
