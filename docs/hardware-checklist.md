@@ -1,8 +1,10 @@
 # First run against a real Seestar
 
-Everything in this project has been developed against a fake and against the ASCOM simulators. This
-is the list to work through the first time a real telescope is on the other end — outside, with the
-scope in front of you, ready to stop it by hand.
+This project was developed against fakes and the ASCOM simulators. This is the list to work through
+the first time a real telescope is on the other end — outside, with the scope in front of you, ready
+to stop it by hand. Part A has been worked through on a Seestar S50 Pro, firmware 9.75, and the
+built-in server path has since been used for several observing nights; Part B (`seestar_alp`) has
+not been tried on real hardware.
 
 Do it in daylight up to step 6 if you can: the mount moves, and you want to see it move.
 
@@ -11,7 +13,8 @@ Do it in daylight up to step 6 if you can: the mount moves, and you want to see 
 Current firmware serves Alpaca from the telescope itself. The test stand (`yarn test:zwo`) runs
 ZWO's own server, so what is unproven here is the firmware underneath it.
 
-- [ ] The Seestar is powered, awake and on the same network; note its IP address
+- [x] The Seestar is powered, awake and on the same network; note its IP address. The address can
+      change after a power cycle; `alpaca_discover` finds the new one
 - [x] `alpaca_discover` finds it on port **32323**, listing camera, focuser, filter wheel, telescope
       and switch — all device **0** (on the S50 Pro the wide-angle camera and focuser are device
       **1**)
@@ -24,7 +27,7 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
       and Dec hold while the azimuth drifts west; off, the azimuth holds while RA climbs
 - [x] **With the arm closed**, `telescope_goto` to a target well above the horizon: does the arm
       unfold, or does the goto fail with "fail to operate"? The server's `Unpark` only clears a flag,
-      so this decides how a session has to start. **Result (S50 Pro, firmware 9.75, 2026-11-05):**
+      so this decides how a session has to start. **Result (S50 Pro, firmware 9.75):**
       the arm unfolds and the goto completes with no unpark first; the server turns tracking on by
       itself when the slew ends
 - [x] `telescope_abort` mid-slew stops the mount. The server turns tracking on afterwards, as it
@@ -44,14 +47,20 @@ ZWO's own server, so what is unproven here is the firmware underneath it.
       catalogue; the telephoto field is 1.35° × 2.39°
 - [x] `telescope_center` on M45 ends within 0.7′ of the target; the camera is left disconnected
       with its gain restored. The first manual round of the same loop took a 3.8° error to 5′
-- [ ] `telescope_center` after a power cycle, when the mount's model is degrees off: how many
-      attempts does it need?
+- [x] `telescope_center` after a power cycle, when the mount's model is degrees off: how many
+      attempts does it need? With the azimuth 20–74° off, the main camera's frame did not solve at
+      all. A wide-angle frame (`camera: 1`) solved with ASTAP's W08 database and a `telescope_sync`
+      came first; `telescope_center` then needed one correction
+- [x] On real nights `telescope_center` typically missed by 10–40′ on the first frame and ended
+      within 1.5′ after one sync. Once, right after a long slew, an attempt solved a frame still
+      showing the previous target and synced on it; a second `telescope_center` with the mount at
+      rest corrected the model
 - [ ] `seestar_state` refuses with directions rather than an "action not implemented" error
 - [ ] With the server and the Seestar app both connected, the app still controls the scope — it is
       the way out if the Alpaca server stops answering (see "If the built-in server stops
       answering" in the README)
-- [ ] If any request hangs: note the tool and arguments, then confirm that a power cycle brings the
-      Alpaca server back
+- [x] If any request hangs: note the tool and arguments, then confirm that a power cycle brings the
+      Alpaca server back. It does, possibly at a new IP address
 
 ## Part B — `seestar_alp`
 

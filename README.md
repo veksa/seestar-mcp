@@ -45,11 +45,16 @@ The Alpaca core is generic, so the standard telescope tools also work against an
 device — including the [ASCOM simulators](https://github.com/ASCOMInitiative/ASCOM.Alpaca.Simulators),
 which is how you can try this without a telescope.
 
-> **Status: early development.** The tools work and are tested — against ZWO's own built-in Alpaca
-> server running on a fake firmware, against the ASCOM simulators, and against a fake of
-> `seestar_alp`. Against a real telescope (S50 Pro, firmware 9.75) only the built-in server path has
-> been tried so far — see [`docs/hardware-checklist.md`](docs/hardware-checklist.md). Expect rough
-> edges under the stars.
+> **Status: in use on a real telescope, still young.** The built-in server path has been used for
+> several observing nights on a Seestar S50 Pro, firmware 9.75: `alpaca_discover`, `telescope_goto`,
+> `telescope_sync`, `camera_capture` with both cameras, `telescope_center` with ASTAP on every
+> target (one correction from a 10–40′ miss to under 1.5′, as a rule), and the filter wheel through
+> `alpaca_put`. Of `astro-mcp`, only `astro_stack` has stacked real Seestar frames; the other
+> processing tools, GraXpert among them, have run only in the test suites. The `seestar_alp` path —
+> the `seestar_*`, `imaging_*` and `schedule_*` tools — has not met a real telescope: it is tested
+> against a fake of `seestar_alp` only. Everything is also tested against ZWO's built-in server on a
+> fake firmware and against the ASCOM simulators. See
+> [`docs/hardware-checklist.md`](docs/hardware-checklist.md).
 
 ## Requirements
 
@@ -258,7 +263,12 @@ that was 3.8° off on the first real test — wider than the whole field. `teles
 4. if the target is further from the centre than `tolerance_arcmin` (default 2′), sync the mount to
    where it really points and slew again.
 
-On the real telescope one correction took the error from 3.8° to 5′.
+On the real telescope one correction took the error from 3.8° to 5′, and on later nights from
+10–40′ to under 1.5′.
+
+After a power cycle or a move by hand the mount's azimuth has been 20–74° off on a real telescope —
+too far for a frame from the main camera to solve. What worked: a frame from the wide-angle camera
+(`camera: 1`), solved with ASTAP's W08 database, then `telescope_sync`, then `telescope_center`.
 
 Install the ASTAP command-line solver and one star database — D05 suits the Seestar's 1.3° × 2.4°
 field — from [hnsky.org](https://hnsky.org/astap.htm), and pass `--astap` (and `--astap-db` if the
